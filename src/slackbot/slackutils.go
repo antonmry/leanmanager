@@ -79,7 +79,6 @@ func slackInit(token string) (wsurl, id string, err error) {
 
 func receiveMessage(ws *websocket.Conn) (m Message, err error) {
 	err = websocket.JSON.Receive(ws, &m)
-	fmt.Println(m)
 	return
 }
 

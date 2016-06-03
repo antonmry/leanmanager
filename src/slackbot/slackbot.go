@@ -18,7 +18,7 @@ func main() {
 	fmt.Println("Slack: bot connected")
 
 	// Keepalives
-	t := time.NewTicker(5 * time.Second)
+	t := time.NewTicker(600 * time.Second)
 	go func() {
 		for {
 			periodicFunction(ws)
@@ -26,11 +26,14 @@ func main() {
 		}
 	}()
 
+	// {0 message G1E3T1U1W <@U1DUEGC4F|leanmanager> has joined the group}
+
 	for {
 		// read messages
 		m, err := receiveMessage(ws)
+		fmt.Println(m)
 		if err != nil {
-			fmt.Println("Slack: error receiving message")
+			fmt.Printf("Slack: error receiving message, %s\n", err)
 			continue
 		}
 
@@ -51,11 +54,10 @@ func main() {
 
 func periodicFunction(ws *websocket.Conn) {
 
-	// TODO: this is failing, why?
 	// https://api.slack.com/rtm
 
 	fmt.Println("Periodic call invoked")
-	m := &Message{0, "message", "daily", "Periodic message" }
+	m := &Message{0, "message", "G1DT31003", "Periodic message" }
 	err := sendMessage(ws, *m)
 
 	if err != nil {
