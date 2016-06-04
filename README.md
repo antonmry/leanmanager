@@ -7,16 +7,27 @@ This should be an end-to-end solution for development management using Github, S
 
 ## Slack bot
 
-Our main point of contact. We want to have the following features:
+Our main point of contact with leanmanager, use slack https://api.slack.com/rtm. 
+
+We want to have the following features:
 
 ### Daily meetings
 
-- [ ] Launch the bot periodically and print a message
+- [x] Launch the bot periodically and print a message
+- [x] Register the channel and all the members
 - [ ] Make the questions to all members
 - [ ] Store the response of each member
 - [ ] Package it as an Slack App (ready to deal with OAuth?)
 - [ ] Some improvements to the bot (icon, etc.)
 - [ ] Put in docker and automatic deployment (Travis?)
+- [ ] Better login
+
+```
+	/*
+	// TODO: {0 group_left G1E3T1U1W }
+	// TODO: channel_joined is the same
+	*/
+```
 
 ### Ask for reports 
 
@@ -32,6 +43,14 @@ Our main point of contact. We want to have the following features:
 We want to know how much time has been spent for an specific PR.
 
 ### Github bot TODO
+
+- [ ] Define scope
+
+## Calendar bot
+
+Users must be able to fill the time using GCalendar / Outlook
+
+### Calendar bot TODO
 
 - [ ] Define scope
 

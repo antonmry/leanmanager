@@ -14,9 +14,18 @@ var counter uint64
 type Message struct {
 	Id      uint64 `json:"id"`
 	Type    string `json:"type"`
-	Channel string `json:"channel"`
+	Channel interface{} `json:"channel"`
 	Text    string `json:"text"`
 }
+
+type Channel struct {
+	Id		string `json:"id"`
+	Name		string `json:"name"`
+	IsChannel	string `json:"is_channel"`
+	Members         interface{} `json:"members"`
+}
+
+type Member string
 
 type responseRtmStart struct {
 	Ok    bool         `json:"ok"`
