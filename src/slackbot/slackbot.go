@@ -200,6 +200,8 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 				(strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") ||
 				strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes")) {
 					break
+				} else {
+					//TODO: we should manage this, also in the following messages
 				}
 			}
 			atomic.StoreInt32(&waitingMessage, 0)
