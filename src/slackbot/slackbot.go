@@ -5,31 +5,29 @@ import (
 	"golang.org/x/net/websocket"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const (
 	//TODO: this must be read as ENV variable (docker)
-	slackToken       = "xoxb-47966556151-mh3PMjIpzo1vUYImrqFAfCw2"
+	slackToken = "xoxb-47966556151-mh3PMjIpzo1vUYImrqFAfCw2"
 )
 
 type memberRecord struct {
 	name string
 }
 
-// TODO: those variables should be channel-dependant
-var registeredMembersStorage map[memberRecord]string
-var registeredMembersMutex sync.RWMutex
-
 var channelId string
-var messageChannel chan Message
-var waitingMessage bool
+var registeredMembersStorage = make(map[memberRecord]string)
+var registeredMembersMutex = sync.RWMutex{}
+var dailyChannel = make(chan Message)
+var waitingMessage int32 = 0
 
-func init() {
-	registeredMembersStorage = make(map[memberRecord]string)
-	registeredMembersMutex = sync.RWMutex{}
-	messageChannel = make(chan Message)
-}
+// TODO: check sync.WaitGroup https://blog.golang.org/pipelines
+// TODO: timeouts: https://gobyexample.com/timeouts
+// TODO: awesome thread sync https://groups.google.com/forum/#!topic/golang-nuts/eIqkhXh9PLg
+// https://gobyexample.com/atomic-counters
 
 func main() {
 	ws, id := slackConnect(slackToken)
@@ -46,8 +44,7 @@ func main() {
 
 	// Message processing
 	for {
-		m, err := receiveMessage(ws)
-		if err != nil {
+		if m, err := receiveMessage(ws); err != nil {
 			fmt.Printf("Slack: error receiving message, %s\n", err)
 			//TODO: in this case, we should reconnect!!
 			continue
@@ -63,12 +60,10 @@ func launchScheduledTasks(ws *websocket.Conn) {
 	if channelId != "" {
 		m := &Message{0, "message", channelId, "Scheduled message"}
 
-		err := sendMessage(ws, *m)
-		if err != nil {
+		if err := sendMessage(ws, *m); err != nil {
 			fmt.Printf("Slack: error sending message: %s\n", err)
 		} else {
 			fmt.Printf("Slack: periodic message sent\n")
-
 		}
 	} else {
 		fmt.Printf("Slack: periodic call invoked but channel ID not defined yet\n")
@@ -80,9 +75,9 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 	// Only for debug
 	fmt.Println(m)
 
-	if m.Type == "group_joined" || m.Type == "channel_joined" || m.Type == "message" && strings.HasPrefix(m.Text,
+	if (m.Type == "group_joined" || m.Type == "channel_joined" || m.Type == "message") && strings.HasPrefix(m.Text,
 		"<@"+id+">: hello") {
-		if m.Type == "group_joined" {
+		if m.Type == "group_joined" || m.Type == "channel_joined" {
 			t := m.Channel.(map[string]interface{})
 			for k, v := range t {
 				// fmt.Printf("Slack: found %s\n", k)
@@ -108,8 +103,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 
 		message := &Message{0, "message", channelId, messageText}
 
-		err := sendMessage(ws, *message)
-		if err != nil {
+		if err := sendMessage(ws, *message); err != nil {
 			fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 		}
 		return
@@ -118,12 +112,12 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: add") {
 		newMember := memberRecord{m.Text[strings.Index(m.Text, ": add")+6:]}
 		// TODO: check if newMember is member of the channel
+		// TODO: allow to add many members with one command
 		registeredMembersMutex.Lock()
 		registeredMembersStorage[newMember] = channelId
 		registeredMembersMutex.Unlock()
 		message := &Message{0, "message", channelId, "Team member " + newMember.name + " registered"}
-		err := sendMessage(ws, *message)
-		if err != nil {
+		if err := sendMessage(ws, *message); err != nil {
 			fmt.Printf("Slack: error adding member in channel %s: %s\n", channelId, err)
 		}
 		return
@@ -134,10 +128,9 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		registeredMembersMutex.Lock()
 		delete(registeredMembersStorage, memberToBeDeleted)
 		registeredMembersMutex.Unlock()
-		// TODO: check if ember is member of the channel
+		// TODO: check if member is registered
 		message := &Message{0, "message", channelId, "Team member " + memberToBeDeleted.name + " deleted"}
-		err := sendMessage(ws, *message)
-		if err != nil {
+		if err := sendMessage(ws, *message); err != nil {
 			fmt.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
 		}
 		return
@@ -196,44 +189,35 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 				fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 			}
 
-			var messageReceived Message
 			var dailyMeetingMessage *Message
+			var messageReceived Message
 
 			// TODO: how we differ messages by channel and user?
-			waitingMessage = true
-			messageReceived = <- messageChannel
-			waitingMessage = false
+			atomic.StoreInt32(&waitingMessage, 1)
+			for {
+				messageReceived = <-dailyChannel
+				if messageReceived.Type == "message" &&
+				(strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") ||
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes")) {
+					break
+				}
+			}
+			atomic.StoreInt32(&waitingMessage, 0)
 
-			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") {
-				dailyMeetingMessage = &Message{0, "message", channelId, "Ok, you can do it later, just type" +
-					"`@leanmanager I'm late` before the end of the day"}
+			if messageReceived.Type == "message" &&
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") {
+				dailyMeetingMessage = &Message{0, "message", channelId, "Ok, you can do it later,  " +
+					"just type `@leanmanager resume` before the end of the day"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
 					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
+				continue
 			}
 
-			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes") {
+			if messageReceived.Type == "message" &&
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes") {
 				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].name +
-				", what did you do yesterday?. Please, start with `@leanmanager: `"}
-				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
-				}
-			} else {
-				fmt.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
-				return
-			}
-
-			// TODO: store message? waitingMessage atomic? timeOut?
-			waitingMessage = true
-			messageReceived = <- messageChannel
-			waitingMessage = false
-
-			//Debug
-			fmt.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
-
-			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">:") {
-				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].name +
-				", what will you do today?. Please, start with `@leanmanager: `"}
+					", what did you do yesterday?. Please, start with `@leanmanager: `"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
 					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
@@ -243,17 +227,47 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			}
 
 			// TODO: store message? waitingMessage atomic? timeOut?
-			waitingMessage = true
-			messageReceived = <- messageChannel
-			waitingMessage = false
-			// TODO: filter by user and channel?
+			atomic.StoreInt32(&waitingMessage, 1)
+			for {
+				messageReceived = <-dailyChannel
+				if messageReceived.Type == "message" &&
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					break
+				}
+			}
+			atomic.StoreInt32(&waitingMessage, 0)
 
 			//Debug
 			fmt.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
 
 			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">:") {
 				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].name +
-				", are there any impediments in your way?. Please, start with `@leanmanager: `"}
+					", what will you do today?. Please, start with `@leanmanager: `"}
+				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
+					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+				}
+			} else {
+				fmt.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
+				return
+			}
+
+			// TODO: store message? waitingMessage atomic? timeOut?
+			atomic.StoreInt32(&waitingMessage, 1)
+			for {
+				messageReceived = <-dailyChannel
+				if messageReceived.Type == "message" &&
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					break
+				}
+			}
+			atomic.StoreInt32(&waitingMessage, 0)
+
+			//Debug
+			fmt.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
+
+			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">:") {
+				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].name +
+					", are there any impediments in your way?. Please, start with `@leanmanager: `"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
 					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
@@ -263,10 +277,15 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			}
 
 			// TODO: store message? waitingMessage atomic or channel? timeOut?
-			// https://gobyexample.com/atomic-counters
-			waitingMessage = true
-			messageReceived = <- messageChannel
-			waitingMessage = false
+			atomic.StoreInt32(&waitingMessage, 1)
+			for {
+				messageReceived = <-dailyChannel
+				if messageReceived.Type == "message" &&
+				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					break
+				}
+			}
+			atomic.StoreInt32(&waitingMessage, 0)
 
 			dailyMeetingMessage = &Message{0, "message", channelId, "Thanks " + teamMembers[i].name}
 			if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
@@ -274,22 +293,13 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			}
 		}
 
-		endDailyMeetingMessage := &Message{0, "message", channelId, "Daily Meeting done :tada:! Have a " +
-		"great day!"}
+		endDailyMeetingMessage := &Message{0, "message", channelId, "Daily Meeting done :tada: Have a " +
+			"great day!"}
 		if err := sendMessage(ws, *endDailyMeetingMessage); err != nil {
 			fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 		}
 
 		return
-	}
-
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+id+">: yes") || strings.HasPrefix(m.Text,
-		"<@"+id+">: no")) {
-		//TODO: invoke the Daily manager
-		if waitingMessage {
-			messageChannel <- m
-			return
-		}
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: schedule") {
@@ -301,8 +311,8 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">") {
-		if waitingMessage {
-			messageChannel <- m
+		if atomic.LoadInt32(&waitingMessage) != 0 {
+			dailyChannel <- m
 		} else {
 			message := &Message{0, "message", channelId, ":interrobang:"}
 
@@ -313,5 +323,4 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		}
 		return
 	}
-
 }
