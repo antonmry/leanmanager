@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"github.com/boltdb/bolt"
 	"golang.org/x/net/websocket"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -10,11 +12,13 @@ import (
 )
 
 const (
-	//TODO: this must be read as ENV variable (docker)
+	//TODO: these must be read as ENV variable (docker)
 	slackToken = "xoxb-47966556151-mh3PMjIpzo1vUYImrqFAfCw2"
+	pathDb     = "/tmp"
 )
 
 type memberRecord struct {
+	ID int
 	name string
 }
 
@@ -30,8 +34,17 @@ var waitingMessage int32 = 0
 // https://gobyexample.com/atomic-counters
 
 func main() {
+	// Open DB
+	// TODO: url path must be provided as ENV variable
+	db, err := bolt.Open(pathDb+"/slackbot.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	// Open connection with Slack
 	ws, id := slackConnect(slackToken)
-	fmt.Println("Slack: bot connected")
+	log.Println("Slack: bot connected")
 
 	// Scheduled tasks
 	t := time.NewTicker(600 * time.Second)
@@ -46,11 +59,11 @@ func main() {
 	for {
 		if m, err := receiveMessage(ws); err != nil {
 			fmt.Printf("Slack: error receiving message, %s\n", err)
-			//TODO: in this case, we should reconnect!!
+			//TODO: if error, we should reconnect!!
 			continue
 		} else {
 			go func(m Message) {
-				manageMessage(m, id, ws)
+				manageMessage(m, id, ws, db)
 			}(m)
 		}
 	}
@@ -58,19 +71,13 @@ func main() {
 
 func launchScheduledTasks(ws *websocket.Conn) {
 	if channelId != "" {
-		m := &Message{0, "message", channelId, "Scheduled message"}
-
-		if err := sendMessage(ws, *m); err != nil {
-			fmt.Printf("Slack: error sending message: %s\n", err)
-		} else {
-			fmt.Printf("Slack: periodic message sent\n")
-		}
+		log.Printf("Slack: periodic message sent\n")
 	} else {
-		fmt.Printf("Slack: periodic call invoked but channel ID not defined yet\n")
+		log.Printf("Slack: periodic call invoked but channel ID not defined yet\n")
 	}
 }
 
-func manageMessage(m Message, id string, ws *websocket.Conn) {
+func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 
 	// Only for debug
 	fmt.Println(m)
@@ -80,7 +87,6 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		if m.Type == "group_joined" || m.Type == "channel_joined" {
 			t := m.Channel.(map[string]interface{})
 			for k, v := range t {
-				// fmt.Printf("Slack: found %s\n", k)
 				if k == "id" {
 					if str, ok := v.(string); ok {
 						channelId = str
@@ -88,13 +94,19 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 					}
 				}
 			}
-			fmt.Printf("Slack: group_joined with id %s \n", channelId)
+			log.Printf("Slack: group_joined with id %s \n", channelId)
 		}
 
 		if m.Type == "message" {
 			channelId = m.Channel.(string)
-			fmt.Printf("Slack: message start with id %s \n", channelId)
+			log.Printf("Slackbot: message start with id %s \n", channelId)
 		}
+
+		go func(db bolt.DB) {
+			if err := createBucket(&db, channelId); err != nil {
+				log.Fatalf("Slackbot: error creating db: %s", err)
+			}
+		}(*db)
 
 		messageText := "Hello team! I'm here to help you with your daily meetings. To add members " +
 			"to the daily meeting type `@leanmanager: add @username`, to setup the hour of the " +
@@ -104,27 +116,34 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		message := &Message{0, "message", channelId, messageText}
 
 		if err := sendMessage(ws, *message); err != nil {
-			fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+			log.Printf("Slackbot: error sending message to channel %s: %s\n", channelId, err)
 		}
 		return
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: add") {
-		newMember := memberRecord{m.Text[strings.Index(m.Text, ": add")+6:]}
+		newMember := memberRecord{0, m.Text[strings.Index(m.Text, ": add")+6:]}
 		// TODO: check if newMember is member of the channel
 		// TODO: allow to add many members with one command
+		// TODO: check if we have the channel bucket befor instert in dB!!
 		registeredMembersMutex.Lock()
 		registeredMembersStorage[newMember] = channelId
 		registeredMembersMutex.Unlock()
+
+		// DB persist
+		if err := storeMember(db, &newMember, channelId); err != nil {
+			log.Printf("Slack: error storing new member in channel %s: %s\n", channelId, err)
+		}
+
 		message := &Message{0, "message", channelId, "Team member " + newMember.name + " registered"}
 		if err := sendMessage(ws, *message); err != nil {
-			fmt.Printf("Slack: error adding member in channel %s: %s\n", channelId, err)
+			log.Printf("Slack: error adding member in channel %s: %s\n", channelId, err)
 		}
 		return
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: delete") {
-		memberToBeDeleted := memberRecord{m.Text[strings.Index(m.Text, ": free")+7:]}
+		memberToBeDeleted := memberRecord{0, m.Text[strings.Index(m.Text, ": free")+7:]}
 		registeredMembersMutex.Lock()
 		delete(registeredMembersStorage, memberToBeDeleted)
 		registeredMembersMutex.Unlock()
@@ -167,18 +186,22 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		message := &Message{0, "message", channelId, "Hi @everyone! Let's start the Daily Meeting :mega:"}
 		err := sendMessage(ws, *message)
 		if err != nil {
-			fmt.Printf("Slack: error starting the daily in channel %s: %s\n", channelId, err)
+			log.Printf("Slack: error starting the daily in channel %s: %s\n", channelId, err)
 		}
 
 		// We don't want to block our storage during the Daily Meeting
-		registeredMembersMutex.Lock()
-		teamMembers := make([]memberRecord, 0)
-		for k, v := range registeredMembersStorage {
-			if v == channelId {
-				teamMembers = append(teamMembers, k)
-			}
+		//registeredMembersMutex.Lock()
+		//teamMembers := make([]memberRecord, 0)
+		//for k, v := range registeredMembersStorage {
+		//	if v == channelId {
+		//		teamMembers = append(teamMembers, k)
+		//	}
+		//}
+		//registeredMembersMutex.Unlock()
+		teamMembers, err := getTeamMembers(db, channelId)
+		if err != nil {
+			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
 		}
-		registeredMembersMutex.Unlock()
 
 		// FIXME: check if there are no members!!
 		for i := range teamMembers {
@@ -197,8 +220,8 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			for {
 				messageReceived = <-dailyChannel
 				if messageReceived.Type == "message" &&
-				(strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") ||
-				strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes")) {
+					(strings.HasPrefix(messageReceived.Text, "<@"+id+">: no") ||
+						strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes")) {
 					break
 				} else {
 					//TODO: we should manage this, also in the following messages
@@ -233,7 +256,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			for {
 				messageReceived = <-dailyChannel
 				if messageReceived.Type == "message" &&
-				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
 					break
 				}
 			}
@@ -258,7 +281,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			for {
 				messageReceived = <-dailyChannel
 				if messageReceived.Type == "message" &&
-				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
 					break
 				}
 			}
@@ -283,7 +306,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			for {
 				messageReceived = <-dailyChannel
 				if messageReceived.Type == "message" &&
-				strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
+					strings.HasPrefix(messageReceived.Text, "<@"+id+">: ") {
 					break
 				}
 			}
