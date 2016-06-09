@@ -7,6 +7,12 @@ import (
 	"encoding/binary"
 )
 
+type NotMemberFoundError string
+
+func (f NotMemberFoundError) Error() string {
+	return fmt.Sprintf("Not member found with username %s", string(f))
+}
+
 func createBucket(db *bolt.DB, bucketName string) error {
 
 	return db.Update(func(tx *bolt.Tx) error {
@@ -22,12 +28,6 @@ func storeMember(db *bolt.DB, member *memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 
-		// Generate ID for the user.
-		// This returns an error only if the Tx is closed or not writeable.
-		// That can't happen in an Update() call so I ignore the error check.
-		id, _ := b.NextSequence()
-		member.ID = int(id)
-
 		// Marshal user data into bytes.
 		buf, err := json.Marshal(member)
 		if err != nil {
@@ -35,7 +35,18 @@ func storeMember(db *bolt.DB, member *memberRecord, bucketName string) error {
 		}
 
 		// Persist bytes to users bucket.
-		return b.Put(itob(member.ID), buf)
+		return b.Put([]byte(member.name), buf)
+	})
+}
+
+func deleteMember(db *bolt.DB, member *memberRecord, bucketName string) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		if v := b.Get([]byte(member.name)); v == nil {
+			return NotMemberFoundError(member.name)
+		}
+
+		return b.Delete([]byte(member.name))
 	})
 }
 

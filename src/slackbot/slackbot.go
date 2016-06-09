@@ -102,11 +102,9 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			log.Printf("Slackbot: message start with id %s \n", channelId)
 		}
 
-		go func(db bolt.DB) {
-			if err := createBucket(&db, channelId); err != nil {
-				log.Fatalf("Slackbot: error creating db: %s", err)
-			}
-		}(*db)
+		if err := createBucket(db, channelId); err != nil {
+			log.Fatalf("Slackbot: error creating db: %s", err)
+		}
 
 		messageText := "Hello team! I'm here to help you with your daily meetings. To add members " +
 			"to the daily meeting type `@leanmanager: add @username`, to setup the hour of the " +
@@ -125,10 +123,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 		newMember := memberRecord{0, m.Text[strings.Index(m.Text, ": add")+6:]}
 		// TODO: check if newMember is member of the channel
 		// TODO: allow to add many members with one command
-		// TODO: check if we have the channel bucket befor instert in dB!!
-		registeredMembersMutex.Lock()
-		registeredMembersStorage[newMember] = channelId
-		registeredMembersMutex.Unlock()
+		// TODO: check if we have the channel bucket before instert in dB!!
 
 		// DB persist
 		if err := storeMember(db, &newMember, channelId); err != nil {
@@ -144,13 +139,22 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: delete") {
 		memberToBeDeleted := memberRecord{0, m.Text[strings.Index(m.Text, ": free")+7:]}
-		registeredMembersMutex.Lock()
-		delete(registeredMembersStorage, memberToBeDeleted)
-		registeredMembersMutex.Unlock()
-		// TODO: check if member is registered
+
+		err := deleteMember(db, &memberToBeDeleted, channelId)
+
+		if serr, ok := err.(*NotMemberFoundError); ok {
+			message := &Message{0, "message", channelId, fmt.Sprintf("%s", serr)}
+			sendMessage(ws, *message)
+			return
+		}
+
+		if err != nil {
+			log.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
+		}
+
 		message := &Message{0, "message", channelId, "Team member " + memberToBeDeleted.name + " deleted"}
 		if err := sendMessage(ws, *message); err != nil {
-			fmt.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
+			log.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
 		}
 		return
 	}
