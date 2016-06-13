@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"github.com/boltdb/bolt"
-	"encoding/json"
-	"encoding/binary"
+	"log"
+	"encoding/gob"
+	"bytes"
 )
 
 type NotMemberFoundError string
@@ -24,18 +25,19 @@ func createBucket(db *bolt.DB, bucketName string) error {
 	})
 }
 
-func storeMember(db *bolt.DB, member *memberRecord, bucketName string) error {
+func storeMember(db *bolt.DB, member memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 
-		// Marshal user data into bytes.
-		buf, err := json.Marshal(member)
-		if err != nil {
-			return err
-		}
+		var buf bytes.Buffer
+		enc := gob.NewEncoder(&buf)
+		enc.Encode(member)
+
+		//Delete log
+		log.Printf("stored member: %s with key %s", buf.Bytes(), member.name)
 
 		// Persist bytes to users bucket.
-		return b.Put([]byte(member.name), buf)
+		return b.Put([]byte(member.name), buf.Bytes())
 	})
 }
 
@@ -50,33 +52,27 @@ func deleteMember(db *bolt.DB, member *memberRecord, bucketName string) error {
 	})
 }
 
-func getTeamMembers(db *bolt.DB, bucketName string) ([]memberRecord, error) {
-
-	teamMembers := make([]memberRecord, 0)
+func getTeamMembers(db *bolt.DB, bucketName string, teamMembers []memberRecord) (error) {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte(bucketName))
-
 		c := b.Cursor()
 		var member memberRecord
 
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
-			if err := json.Unmarshal(k, &member); err != nil {
-				return err
-			}
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+
+			buf := *bytes.NewBuffer(v)
+			dec := gob.NewDecoder(&buf)
+			dec.Decode(&member)
+
+			log.Printf("retrieved member: %s with key %s", member, k)
 			teamMembers = append(teamMembers, member)
 		}
 
 		return nil
 	})
 
-	return teamMembers, err
+	return err
 }
 
-// itob returns an 8-byte big endian representation of v.
-func itob(v int) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(v))
-	return b
-}
