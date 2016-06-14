@@ -28,35 +28,43 @@ func createBucket(db *bolt.DB, bucketName string) error {
 func storeMember(db *bolt.DB, member memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
+		}
 
 		var buf bytes.Buffer
 		enc := gob.NewEncoder(&buf)
 		enc.Encode(member)
 
-		//Delete log
-		log.Printf("stored member: %s with key %s", buf.Bytes(), member.name)
-
 		// Persist bytes to users bucket.
-		return b.Put([]byte(member.name), buf.Bytes())
+		return b.Put([]byte(member.Name), buf.Bytes())
 	})
 }
 
 func deleteMember(db *bolt.DB, member *memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
-		if v := b.Get([]byte(member.name)); v == nil {
-			return NotMemberFoundError(member.name)
+		if b == nil {
+			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
 		}
 
-		return b.Delete([]byte(member.name))
+		if v := b.Get([]byte(member.Name)); v == nil {
+			return NotMemberFoundError(member.Name)
+		}
+
+		return b.Delete([]byte(member.Name))
 	})
 }
 
-func getTeamMembers(db *bolt.DB, bucketName string, teamMembers []memberRecord) (error) {
+func getTeamMembers(db *bolt.DB, bucketName string, teamMembers *[]memberRecord) (error) {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
+		}
+
 		c := b.Cursor()
 		var member memberRecord
 
@@ -67,7 +75,7 @@ func getTeamMembers(db *bolt.DB, bucketName string, teamMembers []memberRecord) 
 			dec.Decode(&member)
 
 			log.Printf("retrieved member: %s with key %s", member, k)
-			teamMembers = append(teamMembers, member)
+			*teamMembers = append(*teamMembers, member)
 		}
 
 		return nil

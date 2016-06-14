@@ -15,17 +15,16 @@ We want to have the following features:
 
 - [x] Launch the bot periodically and print a message
 - [x] Register the channel and all the members
-- [ ] Make the questions to all members
+- [x] Make the questions to all members
 - [ ] Store the response of each member
 - [ ] Package it as an Slack App (ready to deal with OAuth?)
 - [ ] Some improvements to the bot (icon, etc.)
 - [ ] Put in docker and automatic deployment (Travis?)
-- [ ] Better login
+- [ ] Better login, identify the admin
 
 ```
 	/*
 	// TODO: {0 group_left G1E3T1U1W }
-	// TODO: channel_joined is the same
 	*/
 ```
 
