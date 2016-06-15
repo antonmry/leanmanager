@@ -5,6 +5,16 @@ Do you know how much your PR costs?
 
 This should be an end-to-end solution for development management using Github, Slack and mail. The mantra is "Keep it simple", we want to focus in development, not in management tools, time tracking and so on.
 
+## Build and execute
+
+```
+go get github.com/boltdb/bolt
+go get golang.org/x/net/websocket
+./leanmanager
+```
+
+TODO: see how to automate it / vendoring?
+
 ## Slack bot
 
 Our main point of contact with leanmanager, use slack https://api.slack.com/rtm. 

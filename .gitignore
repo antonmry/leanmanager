@@ -6,12 +6,12 @@
 *.o
 *.a
 *.so
+leanmanager
 
 # Folders
 _obj
 _test
 bin
-vendor
 
 # Architecture specific extensions/prefixes
 *.[568vq]
