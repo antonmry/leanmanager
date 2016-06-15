@@ -36,6 +36,13 @@
 			"path": "/codec"
 		},
 		{
+			"importpath": "golang.org/x/crypto/ssh/terminal",
+			"repository": "https://go.googlesource.com/crypto",
+			"revision": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c",
+			"branch": "master",
+			"path": "/ssh/terminal"
+		},
+		{
 			"importpath": "golang.org/x/net/context",
 			"repository": "https://go.googlesource.com/net",
 			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
@@ -43,11 +50,67 @@
 			"path": "/context"
 		},
 		{
+			"importpath": "golang.org/x/net/html/charset",
+			"repository": "https://go.googlesource.com/net",
+			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
+			"branch": "master",
+			"path": "/html/charset"
+		},
+		{
+			"importpath": "golang.org/x/net/http2/h2i",
+			"repository": "https://go.googlesource.com/net",
+			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
+			"branch": "master",
+			"path": "/http2/h2i"
+		},
+		{
 			"importpath": "golang.org/x/net/websocket",
 			"repository": "https://go.googlesource.com/net",
 			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
 			"branch": "master",
 			"path": "/websocket"
+		},
+		{
+			"importpath": "golang.org/x/text/encoding",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/encoding"
+		},
+		{
+			"importpath": "golang.org/x/text/internal/tag",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/internal/tag"
+		},
+		{
+			"importpath": "golang.org/x/text/internal/utf8internal",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/internal/utf8internal"
+		},
+		{
+			"importpath": "golang.org/x/text/language",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/language"
+		},
+		{
+			"importpath": "golang.org/x/text/runes",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/runes"
+		},
+		{
+			"importpath": "golang.org/x/text/transform",
+			"repository": "https://go.googlesource.com/text",
+			"revision": "3b39eb1f65eff3fc1f2746b6f7362d6ad1dcc4ad",
+			"branch": "master",
+			"path": "/transform"
 		}
 	]
 }
