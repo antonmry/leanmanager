@@ -1,0 +1,53 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/boltdb/bolt",
+			"repository": "https://github.com/boltdb/bolt",
+			"revision": "05e441d7b3ded9164c5b912521504e7711dd0ba2",
+			"branch": "master"
+		},
+		{
+			"importpath": "github.com/coreos/etcd/client",
+			"repository": "https://github.com/coreos/etcd",
+			"revision": "b98fa063c801a4ef51fb6f2aad06374493c00ed9",
+			"branch": "master",
+			"path": "/client"
+		},
+		{
+			"importpath": "github.com/coreos/etcd/pkg/pathutil",
+			"repository": "https://github.com/coreos/etcd",
+			"revision": "b98fa063c801a4ef51fb6f2aad06374493c00ed9",
+			"branch": "master",
+			"path": "/pkg/pathutil"
+		},
+		{
+			"importpath": "github.com/coreos/etcd/pkg/types",
+			"repository": "https://github.com/coreos/etcd",
+			"revision": "b98fa063c801a4ef51fb6f2aad06374493c00ed9",
+			"branch": "master",
+			"path": "/pkg/types"
+		},
+		{
+			"importpath": "github.com/ugorji/go/codec",
+			"repository": "https://github.com/ugorji/go",
+			"revision": "b94837a2404ab90efe9289e77a70694c355739cb",
+			"branch": "master",
+			"path": "/codec"
+		},
+		{
+			"importpath": "golang.org/x/net/context",
+			"repository": "https://go.googlesource.com/net",
+			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
+			"branch": "master",
+			"path": "/context"
+		},
+		{
+			"importpath": "golang.org/x/net/websocket",
+			"repository": "https://go.googlesource.com/net",
+			"revision": "3f122ce3dbbe488b7e6a8bdb26f41edec852a40b",
+			"branch": "master",
+			"path": "/websocket"
+		}
+	]
+}
