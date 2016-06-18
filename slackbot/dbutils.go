@@ -1,9 +1,22 @@
-package main
+// Copyright © 2016 leanmanager
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package slackbot
 
 import (
 	"fmt"
 	"github.com/boltdb/bolt"
-	"log"
 	"encoding/gob"
 	"bytes"
 )
@@ -19,7 +32,7 @@ func createBucket(db *bolt.DB, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
-			return fmt.Errorf("Slackbot: create bucket: %s", err)
+			return fmt.Errorf("dbutils: create bucket: %s", err)
 		}
 		return nil
 	})
@@ -29,7 +42,7 @@ func storeMember(db *bolt.DB, member memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
-			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
 		}
 
 		var buf bytes.Buffer
@@ -45,7 +58,7 @@ func deleteMember(db *bolt.DB, member *memberRecord, bucketName string) error {
 	return db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
-			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
 		}
 
 		if v := b.Get([]byte(member.Name)); v == nil {
@@ -62,7 +75,7 @@ func getTeamMembers(db *bolt.DB, bucketName string, teamMembers *[]memberRecord)
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte(bucketName))
 		if b == nil {
-			return fmt.Errorf("Slackbot: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
 		}
 
 		c := b.Cursor()
@@ -73,8 +86,6 @@ func getTeamMembers(db *bolt.DB, bucketName string, teamMembers *[]memberRecord)
 			buf := *bytes.NewBuffer(v)
 			dec := gob.NewDecoder(&buf)
 			dec.Decode(&member)
-
-			log.Printf("retrieved member: %s with key %s", member, k)
 			*teamMembers = append(*teamMembers, member)
 		}
 

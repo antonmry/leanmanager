@@ -1,72 +1,37 @@
-# leanmanager.eu
-Do you know how much your PR costs?
+# leanmanager
+It's time to replace your manager with a bot!
 
 ## Introduction
 
-This should be an end-to-end solution for development management using Github, Slack and mail. The mantra is "Keep it simple", we want to focus in development, not in management tools, time tracking and so on.
-
-## Build and execute
-
-```
-go get github.com/boltdb/bolt
-go get golang.org/x/net/websocket
-./leanmanager
-```
-
-TODO: see how to automate it / vendoring?
+The aim of Lean Manager is to be an end-to-end solution for management of development teams using your favourite tools, not adding more. The mantra is "Keep it simple" so we can focus in development and product design, not in management, time tracking and so on.
 
 ## Slack bot
 
-Our main point of contact with leanmanager, use slack https://api.slack.com/rtm. 
+It's our main point of contact with leanmanager, it uses slack [Real Time API](https://api.slack.com/rtm). Rigth now the only functionality is running the Daily meetings making the questions but more functionality will be added.
 
-We want to have the following features:
+To install leanmanager, you need to install previously go, my recomendation is to use the [official binary ditributions](https://golang.org/doc/install).
+
+Then, just execute:
+
+```sh
+go get -v github.com/antonmry/leanmanager
+```
 
 ### Daily meetings
 
-- [x] Launch the bot periodically and print a message
-- [x] Register the channel and all the members
-- [x] Make the questions to all members
-- [ ] Store the response of each member
-- [ ] Package it as an Slack App (ready to deal with OAuth?)
-- [ ] Some improvements to the bot (icon, etc.)
-- [ ] Put in docker and automatic deployment (Travis?)
-- [ ] Better login, identify the admin
+Daily meetings are in phase beta, but you can use them as you can see in the following screenshot:
 
-```
-	/*
-	// TODO: {0 group_left G1E3T1U1W }
-	*/
+![Daily screenshot with leanmanager](resources/daily.png)
+
+
+To run it, you need to create a bot in the [slack bot creation page](https://my.slack.com/services/new/bot) and retrieve the token of your new bot. Then execute:
+
+```sh
+leanmanager -t YOUR_TOKEN
 ```
 
-### Ask for reports 
+By default, leanmanager persists your configuration in /tmp. If you want to persist it, you could execute:
 
-- [ ] Define scope
-- [ ] Send by email
-
-### Make exceptions 
-
-- [ ] Reminders: team member X is on holidays, fill your hours, etc.
-
-## Github bot
-
-We want to know how much time has been spent for an specific PR.
-
-### Github bot TODO
-
-- [ ] Define scope
-
-## Calendar bot
-
-Users must be able to fill the time using GCalendar / Outlook
-
-### Calendar bot TODO
-
-- [ ] Define scope
-
-## Trello board
-
-Have a board where we can prioritized our issues, see PR associated and so on.
-
-### Trello board TODO
-
-- [ ] Define scope
+```sh
+leanmanager -t YOUR_TOKEN -p /your/path -n identifier_of_your_team
+```

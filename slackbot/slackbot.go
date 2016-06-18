@@ -1,4 +1,18 @@
-package main
+// Copyright © 2016 leanmanager
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package slackbot
 
 import (
 	"fmt"
@@ -10,12 +24,6 @@ import (
 	"time"
 )
 
-const (
-	slackToken = "xoxb-47966556151-mh3PMjIpzo1vUYImrqFAfCw2"
-	pathDb     = "/tmp"
-	teamId     = "NetApps"
-)
-
 type memberRecord struct {
 	Name string
 }
@@ -24,29 +32,21 @@ var channelId string
 var dailyChannel = make(chan Message)
 var waitingMessage int32 = 0
 
-// TODO: CONST must be read as ENV variable, create BASH script to launch
-// TODO: how we differ messages by channel and user? channelID shouldn't be a global variable
-// TODO: timeouts: https://gobyexample.com/timeouts
-// TODO: avoid @leanmanager prefix when possible!
-// TODO: move logic from this file to a new one
-// TODO: check sync.WaitGroup https://blog.golang.org/pipelines
-// TODO: move open DB to dbutils
-// TODO: if error, we should reconnect!!
-// TODO: check if newMember is member of the channel when added
-// TODO: allow to add many members with one command
-// TODO: schedule the daily meeting
-// TODO: show help commands
 
-func main() {
+func LaunchSlackbot(slackToken, pathDb, teamId string) {
 	// Open DB
 	db, err := bolt.Open(pathDb+"/"+teamId+".db", 0600, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error opening the database: %v", err)
 	}
 	defer db.Close()
 
 	// Open connection with Slack
-	ws, id := slackConnect(slackToken)
+	ws, id , err := slackConnect(slackToken)
+	if err != nil {
+		log.Fatalf("Error connecting to Slack, check your token and Internet connection: %v", err)
+	}
+
 	log.Println("Slack: bot connected")
 
 	// Scheduled tasks (timeouts and daily launching)
@@ -61,7 +61,7 @@ func main() {
 	// Message processing
 	for {
 		if m, err := receiveMessage(ws); err != nil {
-			fmt.Printf("Slack: error receiving message, %s\n", err)
+			log.Printf("Slack: error receiving message, %s\n", err)
 			continue
 		} else {
 			go func(m Message) {
@@ -82,7 +82,7 @@ func launchScheduledTasks(ws *websocket.Conn) {
 func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 
 	// Only for debug
-	fmt.Println(m)
+	//log.Println(m)
 
 	// FIXME: we should have some channel logic here, not a global variable :-(
 	if m.Type == "message" && m.Channel != nil {
@@ -174,6 +174,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
 		} else {
 			for i := 0; i < len(teamMembers); i++ {
+				// FIXME: minor perfomance but it should be a buffer, not a string
 				RegisteredMemberMessage += teamMembers[i].Name + ", "
 			}
 		}
@@ -226,7 +227,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 				"! Are you ready?. Type `@leanmanager: yes` or `@leanmanager: no`"}
 			err := sendMessage(ws, *message)
 			if err != nil {
-				fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+				log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 			}
 
 			atomic.StoreInt32(&waitingMessage, 1)
@@ -237,7 +238,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 						strings.HasPrefix(messageReceived.Text, "<@"+id+">: yes")) {
 					break
 				} else {
-					//FIXME: we should manage this?, also in the following messages
+					//FIXME: do we should manage this?, how?, also in the following messages
 				}
 			}
 			atomic.StoreInt32(&waitingMessage, 0)
@@ -247,7 +248,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 				dailyMeetingMessage = &Message{0, "message", channelId, "Ok, you can do it later,  " +
 					"just type `@leanmanager resume` before the end of the day"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+					log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
 				continue
 			}
@@ -257,10 +258,10 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].Name +
 					", what did you do yesterday?. Please, start with `@leanmanager: `"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+					log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
 			} else {
-				fmt.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
+				log.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
 				return
 			}
 
@@ -275,16 +276,16 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			atomic.StoreInt32(&waitingMessage, 0)
 
 			//Debug
-			fmt.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
+			log.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
 
 			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">:") {
 				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].Name +
 					", what will you do today?. Please, start with `@leanmanager: `"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+					log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
 			} else {
-				fmt.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
+				log.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
 				return
 			}
 
@@ -299,16 +300,16 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			atomic.StoreInt32(&waitingMessage, 0)
 
 			//Debug
-			fmt.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
+			log.Printf("Slack: %s: received message from messageChanel: %s\n", channelId, messageReceived)
 
 			if messageReceived.Type == "message" && strings.HasPrefix(messageReceived.Text, "<@"+id+">:") {
 				dailyMeetingMessage = &Message{0, "message", channelId, teamMembers[i].Name +
 					", are there any impediments in your way?. Please, start with `@leanmanager: `"}
 				if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-					fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+					log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 				}
 			} else {
-				fmt.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
+				log.Printf("Slack: unexpected flow in channel %s: %s\n", channelId, err)
 				return
 			}
 
@@ -324,14 +325,14 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 
 			dailyMeetingMessage = &Message{0, "message", channelId, "Thanks " + teamMembers[i].Name}
 			if err := sendMessage(ws, *dailyMeetingMessage); err != nil {
-				fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+				log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 			}
 		}
 
 		endDailyMeetingMessage := &Message{0, "message", channelId, "Daily Meeting done :tada: Have a " +
 			"great day!"}
 		if err := sendMessage(ws, *endDailyMeetingMessage); err != nil {
-			fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+			log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 		}
 
 		return
@@ -350,9 +351,9 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			message := &Message{0, "message", channelId, ":interrobang:"}
 
 			if err := sendMessage(ws, *message); err != nil {
-				fmt.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
+				log.Printf("Slack: error sending message to channel %s: %s\n", channelId, err)
 			}
-			fmt.Printf("Slack: message not understood\n")
+			log.Printf("Slack: message not understood\n")
 		}
 		return
 	}
