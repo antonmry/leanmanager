@@ -15,22 +15,35 @@
 package slackbot
 
 import (
-	"fmt"
-	"github.com/boltdb/bolt"
-	"encoding/gob"
 	"bytes"
+	"encoding/gob"
+	"fmt"
+
+	. "github.com/antonmry/leanmanager/api"
+	"github.com/boltdb/bolt"
 )
 
 type NotMemberFoundError string
+
+var db *bolt.DB
 
 func (f NotMemberFoundError) Error() string {
 	return fmt.Sprintf("Not member found with username %s", string(f))
 }
 
-func createBucket(db *bolt.DB, bucketName string) error {
+func InitDb(path string) error {
+	var err error
+	db, err = bolt.Open(path, 0600, nil)
+	return err
+}
 
+func CloseDb() error {
+	return db.Close()
+}
+
+func StoreChannel(channelToBeCreated Channel) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(bucketName))
+		_, err := tx.CreateBucketIfNotExists([]byte(channelToBeCreated.Id))
 		if err != nil {
 			return fmt.Errorf("dbutils: create bucket: %s", err)
 		}
@@ -38,11 +51,11 @@ func createBucket(db *bolt.DB, bucketName string) error {
 	})
 }
 
-func storeMember(db *bolt.DB, member memberRecord, bucketName string) error {
+func StoreMember(member Member) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
+		b := tx.Bucket([]byte(member.ChannelId))
 		if b == nil {
-			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created.", member.ChannelId)
 		}
 
 		var buf bytes.Buffer
@@ -50,36 +63,56 @@ func storeMember(db *bolt.DB, member memberRecord, bucketName string) error {
 		enc.Encode(member)
 
 		// Persist bytes to users bucket.
-		return b.Put([]byte(member.Name), buf.Bytes())
+		return b.Put([]byte(member.Id), buf.Bytes())
 	})
 }
 
-func deleteMember(db *bolt.DB, member *memberRecord, bucketName string) error {
+func DeleteMember(channelId, memberId string) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
+		b := tx.Bucket([]byte(channelId))
 		if b == nil {
 			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
 		}
 
-		if v := b.Get([]byte(member.Name)); v == nil {
-			return NotMemberFoundError(member.Name)
+		if v := b.Get([]byte(memberId)); v == nil {
+			return NotMemberFoundError(memberId)
 		}
 
-		return b.Delete([]byte(member.Name))
+		return b.Delete([]byte(memberId))
 	})
 }
 
-func getTeamMembers(db *bolt.DB, bucketName string, teamMembers *[]memberRecord) (error) {
+func GetMemberByName(channelId, memberName string) (member *Member, err error) {
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(channelId))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
+		}
+		v := b.Get([]byte(memberName))
+		if v == nil {
+			return NotMemberFoundError(memberName)
+		}
+
+		buf := *bytes.NewBuffer(v)
+		dec := gob.NewDecoder(&buf)
+		dec.Decode(&member)
+		return nil
+	})
+
+	return
+}
+
+func GetTeamMembers(channelId string, teamMembers *[]Member) error {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
-		b := tx.Bucket([]byte(bucketName))
+		b := tx.Bucket([]byte(channelId))
 		if b == nil {
 			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
 		}
 
 		c := b.Cursor()
-		var member memberRecord
+		var member Member
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 
@@ -94,4 +127,3 @@ func getTeamMembers(db *bolt.DB, bucketName string, teamMembers *[]memberRecord)
 
 	return err
 }
-

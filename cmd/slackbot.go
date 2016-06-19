@@ -15,15 +15,15 @@
 package cmd
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/antonmry/leanmanager/slackbot"
+	"github.com/spf13/cobra"
 	"log"
 )
 
 var (
-	slackToken string
-	pathDb string
-	teamName string
+	slackToken  string
+	pathLocalDb string
+	teamName    string
 )
 
 var slackbotCmd = &cobra.Command{
@@ -36,7 +36,7 @@ var slackbotCmd = &cobra.Command{
 			log.SetFlags(0)
 			log.Fatal("Please, specify slackToken using -t or --slackToken")
 		}
-		slackbot.LaunchSlackbot(slackToken, pathDb, teamName)
+		slackbot.LaunchSlackbot(slackToken, pathLocalDb, teamName)
 	},
 }
 
@@ -44,7 +44,7 @@ func init() {
 	RootCmd.AddCommand(slackbotCmd)
 
 	slackbotCmd.PersistentFlags().StringVarP(&slackToken, "slackToken", "t", "", "Token used to connect to Slack.")
-	slackbotCmd.PersistentFlags().StringVarP(&pathDb, "pathdb", "p", "/tmp", "The path to store the slackbot Db")
-	slackbotCmd.PersistentFlags().StringVarP(&teamName, "teamName", "n", "YOURTEAMNAME.db",
-		"Name of the bot's team.")
+	slackbotCmd.PersistentFlags().StringVarP(&pathLocalDb, "pathLocalDb", "l", "/tmp",
+		"The path to store the slackbot Db")
+	slackbotCmd.PersistentFlags().StringVarP(&teamName, "teamName", "n", "YOURTEAMNAME", "Name of the bot's team.")
 }

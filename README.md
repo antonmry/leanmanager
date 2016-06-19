@@ -27,11 +27,11 @@ Daily meetings are in phase beta, but you can use them as you can see in the fol
 To run it, you need to create a bot in the [slack bot creation page](https://my.slack.com/services/new/bot) and retrieve the token of your new bot. Then execute:
 
 ```sh
-leanmanager -t YOUR_TOKEN
+leanmanager slackbot -t YOUR_TOKEN
 ```
 
-By default, leanmanager persists your configuration in /tmp. If you want to persist it, you could execute:
+By default, leanmanager persists your configuration in /tmp. If you want to persist it, you can execute:
 
 ```sh
-leanmanager -t YOUR_TOKEN -p /your/path -n identifier_of_your_team
+leanmanager slackbot -t YOUR_TOKEN -p /your/path -n identifier_of_your_team
 ```
