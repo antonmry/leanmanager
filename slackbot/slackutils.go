@@ -17,26 +17,26 @@ package slackbot
 import (
 	"encoding/json"
 	"fmt"
+	"golang.org/x/net/websocket"
 	"io/ioutil"
 	"net/http"
 	"sync/atomic"
-	"golang.org/x/net/websocket"
 )
 
 var counter uint64
 
 type Message struct {
-	Id      uint64 `json:"id"`
-	Type    string `json:"type"`
+	Id      uint64      `json:"id"`
+	Type    string      `json:"type"`
 	Channel interface{} `json:"channel"`
-	Text    string `json:"text"`
+	Text    string      `json:"text"`
 }
 
 type Channel struct {
-	Id		string `json:"id"`
-	Name		string `json:"name"`
-	IsChannel	string `json:"is_channel"`
-	Members         interface{} `json:"members"`
+	Id        string      `json:"id"`
+	Name      string      `json:"name"`
+	IsChannel string      `json:"is_channel"`
+	Members   interface{} `json:"members"`
 }
 
 type Member string
@@ -97,7 +97,6 @@ func slackInit(token string) (wsurl, id string, err error) {
 	return
 }
 
-
 func receiveMessage(ws *websocket.Conn) (m Message, err error) {
 	err = websocket.JSON.Receive(ws, &m)
 	return
@@ -107,4 +106,3 @@ func sendMessage(ws *websocket.Conn, m Message) error {
 	m.Id = atomic.AddUint64(&counter, 1)
 	return websocket.JSON.Send(ws, m)
 }
-

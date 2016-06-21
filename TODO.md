@@ -6,6 +6,7 @@
 - [ ] Put in docker and automatic deployment (Travis?)
 - [ ] avoid sync/atomic, check sync.WaitGroup https://blog.golang.org/pipelines
 - [ ] create issues for these items
+- [ ] move database access from global variable to interface
 - [ ] unit testing!!
 - [ ] do we need vendoring?
 - [x] restructure the project

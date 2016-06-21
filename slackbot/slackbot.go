@@ -16,33 +16,30 @@ package slackbot
 
 import (
 	"fmt"
-	"github.com/boltdb/bolt"
-	"golang.org/x/net/websocket"
 	"log"
 	"strings"
 	"sync/atomic"
 	"time"
-)
 
-type memberRecord struct {
-	Name string
-}
+	"github.com/antonmry/leanmanager/api"
+	storage "github.com/antonmry/leanmanager/storage"
+	"golang.org/x/net/websocket"
+)
 
 var channelId string
 var dailyChannel = make(chan Message)
 var waitingMessage int32 = 0
 
-
 func LaunchSlackbot(slackToken, pathDb, teamId string) {
 	// Open DB
-	db, err := bolt.Open(pathDb+"/"+teamId+".db", 0600, nil)
+	err := storage.InitDb(pathDb + "/" + teamId + ".db")
 	if err != nil {
 		log.Fatalf("Error opening the database: %v", err)
 	}
-	defer db.Close()
+	defer storage.CloseDb()
 
 	// Open connection with Slack
-	ws, id , err := slackConnect(slackToken)
+	ws, id, err := slackConnect(slackToken)
 	if err != nil {
 		log.Fatalf("Error connecting to Slack, check your token and Internet connection: %v", err)
 	}
@@ -65,7 +62,7 @@ func LaunchSlackbot(slackToken, pathDb, teamId string) {
 			continue
 		} else {
 			go func(m Message) {
-				manageMessage(m, id, ws, db)
+				manageMessage(m, id, ws)
 			}(m)
 		}
 	}
@@ -79,7 +76,7 @@ func launchScheduledTasks(ws *websocket.Conn) {
 	}
 }
 
-func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
+func manageMessage(m Message, id string, ws *websocket.Conn) {
 
 	// Only for debug
 	//log.Println(m)
@@ -111,8 +108,8 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			log.Printf("Slackbot: message start with id %s \n", channelId)
 		}
 
-		if err := createBucket(db, channelId); err != nil {
-			log.Fatalf("Slackbot: error creating db: %s", err)
+		if err := storage.StoreChannel(api.Channel{channelId, "", ""}); err != nil {
+			log.Fatalf("Slackbot: error storing channel: %s", err)
 		}
 
 		messageText := "Hello team! I'm here to help you with your daily meetings. To add members " +
@@ -129,10 +126,11 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: add") {
-		newMember := memberRecord{m.Text[strings.Index(m.Text, ": add")+6:]}
+		newMember := api.Member{m.Text[strings.Index(m.Text, ": add")+6:], m.Text[strings.Index(m.Text, ": add")+6:],
+			channelId, ""}
 
 		// DB persist
-		if err := storeMember(db, newMember, channelId); err != nil {
+		if err := storage.StoreMember(newMember); err != nil {
 			log.Printf("Slack: error storing new member in channel %s: %s\n", channelId, err)
 		}
 
@@ -144,11 +142,10 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: delete") {
-		memberToBeDeleted := memberRecord{m.Text[strings.Index(m.Text, ": delete")+9:]}
+		memberToBeDeleted := m.Text[strings.Index(m.Text, ": delete")+9:]
+		err := storage.DeleteMember(memberToBeDeleted, channelId)
 
-		err := deleteMember(db, &memberToBeDeleted, channelId)
-
-		if serr, ok := err.(*NotMemberFoundError); ok {
+		if serr, ok := err.(*storage.NotMemberFoundError); ok {
 			message := &Message{0, "message", channelId, fmt.Sprintf("%s", serr)}
 			sendMessage(ws, *message)
 			return
@@ -158,7 +155,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			log.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
 		}
 
-		message := &Message{0, "message", channelId, "Team member " + memberToBeDeleted.Name + " deleted"}
+		message := &Message{0, "message", channelId, "Team member " + memberToBeDeleted + " deleted"}
 		if err := sendMessage(ws, *message); err != nil {
 			log.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
 		}
@@ -168,9 +165,9 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: list") {
 
 		var RegisteredMemberMessage string
-		var teamMembers []memberRecord
+		var teamMembers []api.Member
 
-		if err := getTeamMembers(db, channelId, &teamMembers); err != nil {
+		if err := storage.GetTeamMembers(channelId, &teamMembers); err != nil {
 			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
 		} else {
 			for i := 0; i < len(teamMembers); i++ {
@@ -202,11 +199,11 @@ func manageMessage(m Message, id string, ws *websocket.Conn, db *bolt.DB) {
 			log.Printf("Slack: error starting the daily in channel %s: %s\n", channelId, err)
 		}
 
-		var teamMembers []memberRecord
+		var teamMembers []api.Member
 		var dailyMeetingMessage *Message
 		var messageReceived Message
 
-		if err := getTeamMembers(db, channelId, &teamMembers); err != nil {
+		if err := storage.GetTeamMembers(channelId, &teamMembers); err != nil {
 			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
 			return
 		}
