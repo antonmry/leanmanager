@@ -15,31 +15,37 @@
 package slackbot
 
 import (
-	"fmt"
+	//"encoding/json"
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/antonmry/leanmanager/api"
-	storage "github.com/antonmry/leanmanager/storage"
 	"golang.org/x/net/websocket"
 )
 
-var channelId string
-var dailyChannel = make(chan Message)
-var waitingMessage int32 = 0
+var (
+	dailyChannel         = make(chan Message)
+	waitingMessage int32 = 0
+	channelId      string
+	teamId         string
+	apiserverUrl   string
+)
 
-func LaunchSlackbot(slackToken, pathDb, teamId string) {
-	// Open DB
-	err := storage.InitDb(pathDb + "/" + teamId + ".db")
-	if err != nil {
-		log.Fatalf("Error opening the database: %v", err)
-	}
-	defer storage.CloseDb()
+func LaunchSlackbot(slackTokenArg, teamIdArg, apiserverHostArg string, apiserverPortArg int) {
+
+	// Global variables
+	teamId = teamIdArg
+	apiserverUrl = "http://" + apiserverHostArg + ":" + strconv.Itoa(apiserverPortArg)
 
 	// Open connection with Slack
-	ws, id, err := slackConnect(slackToken)
+	ws, id, err := slackConnect(slackTokenArg)
 	if err != nil {
 		log.Fatalf("Error connecting to Slack, check your token and Internet connection: %v", err)
 	}
@@ -108,8 +114,20 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 			log.Printf("Slackbot: message start with id %s \n", channelId)
 		}
 
-		if err := storage.StoreChannel(api.Channel{channelId, "", ""}); err != nil {
-			log.Fatalf("Slackbot: error storing channel: %s", err)
+		newChannel := api.Channel{Id: channelId,
+			Name:   channelId,
+			TeamId: teamId}
+
+		var buf bytes.Buffer
+		err := json.NewEncoder(&buf).Encode(&newChannel)
+		resp, err := http.Post(apiserverUrl+"/channels",
+			"application/json", &buf)
+
+		defer resp.Body.Close()
+
+		if err != nil || resp.StatusCode != 201 {
+			log.Printf("slackbot: error invoking API Server to save the channel: %v", err)
+			return
 		}
 
 		messageText := "Hello team! I'm here to help you with your daily meetings. To add members " +
@@ -126,12 +144,21 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 	}
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: add") {
-		newMember := api.Member{m.Text[strings.Index(m.Text, ": add")+6:], m.Text[strings.Index(m.Text, ": add")+6:],
-			channelId, ""}
+		newMember := api.Member{m.Text[strings.Index(m.Text, ": add")+6:], m.Text[strings.Index(m.Text,
+			": add")+6:], channelId, teamId}
 
 		// DB persist
-		if err := storage.StoreMember(newMember); err != nil {
-			log.Printf("Slack: error storing new member in channel %s: %s\n", channelId, err)
+		var buf bytes.Buffer
+		err := json.NewEncoder(&buf).Encode(&newMember)
+		resp, err := http.Post(apiserverUrl+"/members",
+			"application/json", &buf)
+
+		defer resp.Body.Close()
+
+		if err != nil || resp.StatusCode != 201 {
+			log.Printf("slackbot: error invoking API Server to store new member %s in channel %s: %v",
+				newMember.Name, channelId, err)
+			return
 		}
 
 		message := &Message{0, "message", channelId, "Team member " + newMember.Name + " registered"}
@@ -143,16 +170,21 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 
 	if m.Type == "message" && strings.HasPrefix(m.Text, "<@"+id+">: delete") {
 		memberToBeDeleted := m.Text[strings.Index(m.Text, ": delete")+9:]
-		err := storage.DeleteMember(memberToBeDeleted, channelId)
 
-		if serr, ok := err.(*storage.NotMemberFoundError); ok {
-			message := &Message{0, "message", channelId, fmt.Sprintf("%s", serr)}
+		clientAPI := &http.Client{}
+
+		delMemberReq, _ := http.NewRequest("DELETE", apiserverUrl+"/members/"+
+			channelId+"/"+memberToBeDeleted, nil)
+
+		resp, err := clientAPI.Do(delMemberReq)
+		defer resp.Body.Close()
+
+		if err != nil || resp.StatusCode != 200 {
+			log.Printf("slackbot: error invoking API Server to delete member %s in channel %s: %s",
+				memberToBeDeleted, channelId, err)
+			message := &Message{0, "message", channelId, "error deleting member"}
 			sendMessage(ws, *message)
 			return
-		}
-
-		if err != nil {
-			log.Printf("Slack: error deleting member in channel %s: %s\n", channelId, err)
 		}
 
 		message := &Message{0, "message", channelId, "Team member " + memberToBeDeleted + " deleted"}
@@ -167,13 +199,25 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		var RegisteredMemberMessage string
 		var teamMembers []api.Member
 
-		if err := storage.GetTeamMembers(channelId, &teamMembers); err != nil {
-			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
-		} else {
-			for i := 0; i < len(teamMembers); i++ {
-				// FIXME: minor perfomance but it should be a buffer, not a string
-				RegisteredMemberMessage += teamMembers[i].Name + ", "
-			}
+		resp, err := http.Get(apiserverUrl + "/members/" + channelId)
+		defer resp.Body.Close()
+
+		if err != nil || resp.StatusCode != 200 {
+			log.Printf("slackbot: error invoking API Server to retrieve members of channel: %v", err)
+			return
+		}
+
+		buf, err := ioutil.ReadAll(resp.Body)
+		json.Unmarshal(buf, &teamMembers)
+
+		if err != nil {
+			log.Printf("slackbot: error parsing API Server response with members of channel: %v", err)
+			return
+		}
+
+		for i := 0; i < len(teamMembers); i++ {
+			// FIXME: minor perfomance but it should be a buffer, not a string
+			RegisteredMemberMessage += teamMembers[i].Name + ", "
 		}
 
 		if RegisteredMemberMessage == "" {
@@ -185,8 +229,7 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		}
 
 		message := &Message{0, "message", channelId, RegisteredMemberMessage}
-		err := sendMessage(ws, *message)
-		if err != nil {
+		if err := sendMessage(ws, *message); err != nil {
 			log.Printf("Slack: error listing member in channel %s: %s\n", channelId, err)
 		}
 		return
@@ -203,8 +246,19 @@ func manageMessage(m Message, id string, ws *websocket.Conn) {
 		var dailyMeetingMessage *Message
 		var messageReceived Message
 
-		if err := storage.GetTeamMembers(channelId, &teamMembers); err != nil {
-			log.Printf("Slack: error retrieving members in channel %s: %s\n", channelId, err)
+		resp, err := http.Get(apiserverUrl + "/members/" + channelId)
+		defer resp.Body.Close()
+
+		if err != nil || resp.StatusCode != 200 {
+			log.Printf("slackbot: error invoking API Server to retrieve members of channel: %v", err)
+			return
+		}
+
+		buf, err := ioutil.ReadAll(resp.Body)
+		json.Unmarshal(buf, &teamMembers)
+
+		if err != nil {
+			log.Printf("slackbot: error parsing API Server response with members of channel: %v", err)
 			return
 		}
 

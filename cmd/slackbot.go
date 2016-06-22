@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	slackToken  string
-	pathLocalDb string
-	teamName    string
+	slackToken    string
+	teamName      string
+	apiserverHost string
+	apiserverPort int
 )
 
 var slackbotCmd = &cobra.Command{
@@ -36,7 +37,7 @@ var slackbotCmd = &cobra.Command{
 			log.SetFlags(0)
 			log.Fatal("Please, specify slackToken using -t or --slackToken")
 		}
-		slackbot.LaunchSlackbot(slackToken, pathLocalDb, teamName)
+		slackbot.LaunchSlackbot(slackToken, teamName, apiserverHost, apiserverPort)
 	},
 }
 
@@ -44,7 +45,7 @@ func init() {
 	RootCmd.AddCommand(slackbotCmd)
 
 	slackbotCmd.PersistentFlags().StringVarP(&slackToken, "slackToken", "t", "", "Token used to connect to Slack.")
-	slackbotCmd.PersistentFlags().StringVarP(&pathLocalDb, "pathLocalDb", "l", "/tmp",
-		"The path to store the slackbot Db")
 	slackbotCmd.PersistentFlags().StringVarP(&teamName, "teamName", "n", "YOURTEAMNAME", "Name of the bot's team.")
+	slackbotCmd.PersistentFlags().StringVarP(&apiserverHost, "apiserverHost", "a", "localhost", "IP or hostname of your leanmanager API server.")
+	slackbotCmd.PersistentFlags().IntVarP(&apiserverPort, "apiserverPort", "b", 8080, "IP or hostname of your leanmanager API server.")
 }

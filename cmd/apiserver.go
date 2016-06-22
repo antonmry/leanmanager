@@ -22,6 +22,8 @@ import (
 var (
 	pathDb string
 	dbName string
+	host   string
+	port   int
 )
 
 // apiserverCmd represents the apiserver command
@@ -30,14 +32,16 @@ var apiserverCmd = &cobra.Command{
 	Short: "The APIs which control the leanmanager's behaviour",
 	Long:  `.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		apiserver.LaunchAPIServer(pathDb + "/" + dbName + ".db")
+		apiserver.LaunchAPIServer(pathDb, dbName, host, port)
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(apiserverCmd)
 
-	apiserverCmd.PersistentFlags().StringVarP(&pathDb, "pathdb", "p", "/tmp", "The path to store the slackbot Db")
-	apiserverCmd.PersistentFlags().StringVarP(&dbName, "dbname", "d", "leanmanager",
+	apiserverCmd.PersistentFlags().StringVarP(&pathDb, "pathdb", "d", "/tmp", "The path to store the slackbot Db")
+	apiserverCmd.PersistentFlags().StringVarP(&dbName, "dbname", "n", "leanmanager",
 		"Name of the DB where data is stored")
+	slackbotCmd.PersistentFlags().StringVarP(&host, "host", "o", "localhost", "IP or hostname of your leanmanager API server.")
+	slackbotCmd.PersistentFlags().IntVarP(&port, "port", "p", 8080, "IP or hostname of your leanmanager API server.")
 }
