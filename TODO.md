@@ -1,8 +1,8 @@
 # TODO
 
-## General
+## Technical debt
 
-- [ ] create the API Server as k8s does, it will be the heart of the project
+- [ ] create the API Server as k8s does, it will be the heart of the project #1
 - [ ] Put in docker and automatic deployment (Travis?)
 - [ ] avoid sync/atomic, check sync.WaitGroup https://blog.golang.org/pipelines
 - [ ] create issues for these items
@@ -13,28 +13,28 @@
 - [x] const must be read as ENV variable or args, create BASH script to launch
 - [ ] @leanmanager: add without user panics
 - [ ] [Avoid Go's default client](https://medium.com/@nate510/don-t-use-go-s-default-http-client-4804cb19f779#.tmgmfnr34)
+- [x] move open DB to dbutils #1
+- [ ] refactor manageMessage, it's too big
 
 ## Slackbot
 
 ### Daily meetings
 
+- [ ] how we differ messages by channel and user? channelID shouldn't be a global variable #2
+- [ ] timeouts: https://gobyexample.com/timeouts #2
+- [ ] avoid @leanmanager prefix when possible! #2
+- [ ] if error receiving messange, we should reconnect!! #2
+- [ ] check if newMember is member of the channel when added #2
+- [ ] allow to add many members with one command #2
+- [ ] schedule the daily meeting #2
+- [ ] show help commands #2 
+- [ ] Package it as an Slack App (ready to deal with OAuth?)
+- [ ] Some improvements to the bot (icon, etc.)
+- [ ] Store the response of each member and do what?
+- [ ] Better login, identify the admin
 - [x] Launch the bot periodically and print a message
 - [x] Register the channel and all the members
 - [x] Make the questions to all members
-- [ ] how we differ messages by channel and user? channelID shouldn't be a global variable
-- [ ] refactor manageMessage, it's too big
-- [ ] timeouts: https://gobyexample.com/timeouts
-- [ ] avoid @leanmanager prefix when possible!
-- [ ] move open DB to dbutils
-- [ ] if error receiving messange, we should reconnect!!
-- [ ] check if newMember is member of the channel when added
-- [ ] allow to add many members with one command
-- [ ] schedule the daily meeting
-- [ ] show help commands
-- [ ] Package it as an Slack App (ready to deal with OAuth?)
-- [ ] Store the response of each member
-- [ ] Some improvements to the bot (icon, etc.)
-- [ ] Better login, identify the admin
 
 ### Ask for reports 
 
