@@ -102,7 +102,7 @@ func GetMemberByName(channelId, memberName string) (member *Member, err error) {
 	return
 }
 
-func GetTeamMembers(channelId string, teamMembers *[]Member) error {
+func GetMembersByChannel(channelId string, teamMembers *[]Member) error {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys

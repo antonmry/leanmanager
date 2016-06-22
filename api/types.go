@@ -15,20 +15,20 @@
 package api
 
 type Member struct {
-	Id        string
-	Name      string
-	ChannelId string
-	TeamId    string
+	Id        string `json:"id"`
+	Name      string `json:"name"`
+	ChannelId string `json:"channelId"`
+	TeamId    string `json:"teamId"`
 }
 
 type Channel struct {
-	Id     string
-	Name   string
-	TeamId string
+	Id     string `json:"id"`
+	Name   string `json:"name"`
+	TeamId string `json:"teamId"`
 }
 
 type Team struct {
-	Id    string
-	Name  string
-	Token string
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Token string `json:"slackToken"`
 }

@@ -11,9 +11,11 @@
 - [ ] do we need vendoring?
 - [x] restructure the project
 - [x] const must be read as ENV variable or args, create BASH script to launch
+- [ ] @leanmanager: add without user panics
+- [ ] [Avoid Go's default client](https://medium.com/@nate510/don-t-use-go-s-default-http-client-4804cb19f779#.tmgmfnr34)
 - [x] move open DB to dbutils #1
 - [ ] refactor manageMessage, it's too big
- 
+
 ## Slackbot
 
 ### Daily meetings

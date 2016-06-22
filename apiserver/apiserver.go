@@ -17,6 +17,8 @@ package apiserver
 import (
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 
 	. "github.com/antonmry/leanmanager/api"
 	storage "github.com/antonmry/leanmanager/storage"
@@ -61,6 +63,13 @@ func (dao DAO) Register(container *restful.Container) {
 		Param(memberWs.PathParameter("member-id", "identifier of the member").DataType("string")).
 		Writes(Member{}))
 
+	memberWs.Route(memberWs.GET("/{channel-id}/").To(dao.findMembersByChannel).
+		// docs
+		Doc("get all member in a channel").
+		Operation("findMembersByChannel").
+		Param(memberWs.PathParameter("channel-id", "identifier of the channel").DataType("string")).
+		Writes(Member{}))
+
 	memberWs.Route(memberWs.POST("").To(dao.createMember).
 		// docs
 		Doc("create a member").
@@ -93,6 +102,7 @@ func (dao *DAO) createChannel(request *restful.Request, response *restful.Respon
 
 	}
 	response.WriteHeaderAndEntity(http.StatusCreated, c)
+	log.Printf("apiserver: channel %s created", c.Id)
 }
 
 func (dao DAO) findMember(request *restful.Request, response *restful.Response) {
@@ -107,6 +117,21 @@ func (dao DAO) findMember(request *restful.Request, response *restful.Response) 
 
 	}
 	response.WriteEntity(m)
+	log.Printf("apiserver: member %s found", m.Name)
+}
+
+func (dao DAO) findMembersByChannel(request *restful.Request, response *restful.Response) {
+
+	channelId := request.PathParameter("channel-id")
+	var teamMembers []Member
+	if err := storage.GetMembersByChannel(channelId, &teamMembers); err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusNotFound, "404: Member could not be found.")
+		return
+
+	}
+	response.WriteEntity(teamMembers)
+	log.Printf("apiserver: %d members found by channel %s", len(teamMembers), channelId)
 }
 
 func (dao *DAO) createMember(request *restful.Request, response *restful.Response) {
@@ -125,6 +150,7 @@ func (dao *DAO) createMember(request *restful.Request, response *restful.Respons
 
 	}
 	response.WriteHeaderAndEntity(http.StatusCreated, m)
+	log.Printf("apiserver: member %s created", m.Name)
 }
 
 func (dao *DAO) removeMember(request *restful.Request, response *restful.Response) {
@@ -135,21 +161,24 @@ func (dao *DAO) removeMember(request *restful.Request, response *restful.Respons
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
-
 	}
+	log.Printf("apiserver: member %s deleted", memberId)
 }
 
-func LaunchAPIServer(pathdb string) {
+func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
+
+	// Parameters
+	portStr := strconv.Itoa(portArg)
 
 	// Database initialization
-	err := storage.InitDb(pathdb)
+	err := storage.InitDb(pathDbArg + "/" + dbNameArg + ".db")
 	if err != nil {
-		log.Fatalf("Error opening the database %s: %v", pathdb, err)
+		log.Fatalf("Error opening the database %s: %s", pathDbArg+"/"+dbNameArg+".db", err)
 	}
 	defer storage.CloseDb()
 
 	// Only for debug:
-	//restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
+	restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
 
 	wsContainer := restful.NewContainer()
 	dao := DAO{}
@@ -157,7 +186,7 @@ func LaunchAPIServer(pathdb string) {
 
 	config := swagger.Config{
 		WebServices:    wsContainer.RegisteredWebServices(),
-		WebServicesUrl: "http://localhost:8080",
+		WebServicesUrl: "http://" + hostArg + ":" + portStr,
 		ApiPath:        "/apidocs.json",
 
 		SwaggerPath:     "/apidocs/",
@@ -165,7 +194,7 @@ func LaunchAPIServer(pathdb string) {
 	}
 	swagger.RegisterSwaggerService(config, wsContainer)
 
-	log.Printf("start listening on localhost:8080")
-	server := &http.Server{Addr: ":8080", Handler: wsContainer}
+	log.Printf("start listening on %s:%d", hostArg, portArg)
+	server := &http.Server{Addr: hostArg + ":" + portStr, Handler: wsContainer}
 	log.Fatal(server.ListenAndServe())
 }
