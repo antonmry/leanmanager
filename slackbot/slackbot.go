@@ -68,10 +68,12 @@ func manageMessage(m Message, botID string, ws *websocket.Conn) {
 		manageAddMember(ws, &m)
 	case m.isDeleteMemberDailyMsj(botID):
 		manageDelMember(ws, &m)
-	case m.isListMemersDailyMsj(botID):
+	case m.isListMembersDailyMsj(botID):
 		manageListMembers(ws, &m)
 	case m.isStartDaily(botID):
 		manageStartDaily(ws, &m)
+	case m.isResumeDailyMsj(botID):
+		manageResumeDaily(ws, &m)
 	case m.isCommand(botID):
 		manageUnderstoodCommand(ws, &m)
 		log.Printf("slackbot: bot %s has received an understood message", botID)

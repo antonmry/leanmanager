@@ -22,7 +22,6 @@
 
 ### Daily meetings
 
-- [ ] resume command #3
 - [ ] schedule the daily meeting #3
 - [ ] show help commands #3 
 - [ ] validate responses (contain a Github PR or a Github Issue)
@@ -33,6 +32,7 @@
 - [ ] Store the response of each member and do what?
 - [ ] check if newMember is member of the channel when added 
 - [ ] Better login, identify the admin
+- [x] resume command #3
 - [x] timeouts: https://gobyexample.com/timeouts #3
 - [x] avoid @leanmanager prefix when possible! #2
 - [x] differ messages by channel and user, channelID shouldn't be a global variable #2
