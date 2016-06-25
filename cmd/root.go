@@ -1,36 +1,57 @@
-// Copyright © 2016 leanmanager
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// Package cmd implements the leanmanager available commands
 package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"sync"
 
+	"github.com/antonmry/leanmanager/apiserver"
+	"github.com/antonmry/leanmanager/slackbot"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	slackToken    string
+	teamName      string
+	apiserverHost string
+	apiserverPort int
+	pathDb        string
+	dbName        string
+)
 
+// RootCmd acts as an standalone instance launching all services to provide non-HA functionality
 var RootCmd = &cobra.Command{
 	Use:   "leanmanager",
 	Short: "Replace your managers with a bot",
 	Long: `This bot automates the tasks usually done by managers in development teams, so you can save costs and
 	let your team work in more productive tasks than simple management.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		if slackToken == "" {
+			slackToken = os.Getenv("LEANMANAGER_TOKEN")
+		}
+
+		if slackToken == "" {
+			log.SetFlags(0)
+			log.Fatal("Please, specify slackToken using -t or --slackToken")
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			slackbot.LaunchSlackbot(slackToken, teamName, apiserverHost, apiserverPort)
+		}()
+		go func() {
+			defer wg.Done()
+			apiserver.LaunchAPIServer(pathDb, dbName, apiserverHost, apiserverPort)
+		}()
+		wg.Wait()
+	},
 }
 
+// Execute is used by the root main to launch leanmanager commands
 func Execute() {
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -39,24 +60,12 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
+	f := RootCmd.PersistentFlags()
 
-	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.leanmanager.yaml)")
-}
-
-// initConfig reads in config file and ENV variables if set.
-// TODO
-func initConfig() {
-	if cfgFile != "" { // enable ability to specify config file via flag
-		viper.SetConfigFile(cfgFile)
-	}
-
-	viper.SetConfigName(".leanmanager") // name of config file (without extension)
-	viper.AddConfigPath("$HOME")  // adding home directory as first search path
-	viper.AutomaticEnv()          // read in environment variables that match
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	}
+	f.StringVarP(&pathDb, "pathdb", "d", "/tmp", "The path to store the slackbot Db")
+	f.StringVarP(&dbName, "dbname", "n", "leanmanager", "Name of the DB where data is stored")
+	f.StringVarP(&slackToken, "slackToken", "t", "", "Token used to connect to Slack.")
+	f.StringVarP(&teamName, "teamName", "e", "YOURTEAMNAME", "Name of the bot's team.")
+	f.StringVarP(&apiserverHost, "apiserverHost", "a", "localhost", "IP or hostname of your leanmanager API server.")
+	f.IntVarP(&apiserverPort, "apiserverPort", "p", 8080, "IP or hostname of your leanmanager API server.")
 }
