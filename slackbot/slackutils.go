@@ -10,10 +10,15 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antonmry/leanmanager/api"
 
 	"golang.org/x/net/websocket"
+)
+
+const (
+	timeout int = 120
 )
 
 // Message represents the message received from Slack
@@ -216,14 +221,7 @@ func manageListMembers(ws *websocket.Conn, m *Message) {
 	}
 
 	if len(teamMembers[:]) == 0 {
-		message := &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text: "There are no members registered yet. Type " +
-				"`@leanmanager: add @username` to add the first one",
-		}
-		if err := message.send(ws); err != nil {
+		if err := sendNotMembersRegisteredMsj(ws, m.getChannelID()); err != nil {
 			log.Printf("slackutils: error listing member in channel %s: %s\n", m.getChannelID(), err)
 		}
 		return
@@ -264,14 +262,7 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 	}
 
 	if len(teamMembers[:]) == 0 {
-		message := &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text: "There are no members registered yet. Type " +
-				"`@leanmanager: add @username` to add the first one",
-		}
-		if err := message.send(ws); err != nil {
+		if err := sendNotMembersRegisteredMsj(ws, m.getChannelID()); err != nil {
 			log.Printf("slackutils: error listing member in channel %s: %s\n", m.getChannelID(), err)
 		}
 		return
@@ -299,21 +290,21 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 		channelsMap.Unlock()
 		defer channelsMap.finishWaitingMember(m.getChannelID(), teamMembers[i].Id)
 
+		var memberAvailable bool
 		for {
-			messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]
-			if messageReceived.isYes() || messageReceived.isNo() {
+			select {
+			case <-time.After(time.Second * time.Duration(timeout)):
+				memberAvailable = false
+			case messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]:
+				memberAvailable = true
+			}
+			if !memberAvailable || (messageReceived.isYes() || messageReceived.isNo()) {
 				break
 			}
 		}
 
-		if messageReceived.isNo() {
-			dailyMeetingMessage := &Message{
-				ID:      0,
-				Type:    "message",
-				Channel: m.getChannelID(),
-				Text:    "Ok, you can do it later, just type `@leanmanager resume` before the end of the day",
-			}
-			if err := dailyMeetingMessage.send(ws); err != nil {
+		if messageReceived.isNo() || !memberAvailable {
+			if err := sendNotAvailableMsj(ws, m.getChannelID()); err != nil {
 				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 			}
 			continue
@@ -430,7 +421,6 @@ func sendHelloMsj(ws *websocket.Conn, channelID string) error {
 }
 
 func sendStartDailyMsj(ws *websocket.Conn, channelID string) error {
-
 	m := &Message{
 		ID:      0,
 		Type:    "message",
@@ -440,8 +430,26 @@ func sendStartDailyMsj(ws *websocket.Conn, channelID string) error {
 	return m.send(ws)
 }
 
-func sendUnexpectedProblemMsj(ws *websocket.Conn, channelID string) error {
+func sendNotAvailableMsj(ws *websocket.Conn, channelID string) error {
+	m := &Message{
+		ID:      0,
+		Type:    "message",
+		Channel: channelID,
+		Text:    ":shit: You can do it later, just type `@leanmanager resume` before the end of the day",
+	}
+	return m.send(ws)
+}
 
+func sendNotMembersRegisteredMsj(ws *websocket.Conn, channelID string) error {
+	m := &Message{
+		ID:      0,
+		Type:    "message",
+		Channel: channelID,
+		Text:    "There are no members registered yet. Type `@leanmanager: add @username` to add the first one",
+	}
+	return m.send(ws)
+}
+func sendUnexpectedProblemMsj(ws *websocket.Conn, channelID string) error {
 	m := &Message{
 		ID:      0,
 		Type:    "message",
