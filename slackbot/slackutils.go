@@ -10,10 +10,15 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antonmry/leanmanager/api"
 
 	"golang.org/x/net/websocket"
+)
+
+const (
+	timeout int = 120
 )
 
 // Message represents the message received from Slack
@@ -216,14 +221,7 @@ func manageListMembers(ws *websocket.Conn, m *Message) {
 	}
 
 	if len(teamMembers[:]) == 0 {
-		message := &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text: "There are no members registered yet. Type " +
-				"`@leanmanager: add @username` to add the first one",
-		}
-		if err := message.send(ws); err != nil {
+		if err := sendNotMembersRegisteredMsj(ws, m.getChannelID()); err != nil {
 			log.Printf("slackutils: error listing member in channel %s: %s\n", m.getChannelID(), err)
 		}
 		return
@@ -264,14 +262,7 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 	}
 
 	if len(teamMembers[:]) == 0 {
-		message := &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text: "There are no members registered yet. Type " +
-				"`@leanmanager: add @username` to add the first one",
-		}
-		if err := message.send(ws); err != nil {
+		if err := sendNotMembersRegisteredMsj(ws, m.getChannelID()); err != nil {
 			log.Printf("slackutils: error listing member in channel %s: %s\n", m.getChannelID(), err)
 		}
 		return
@@ -295,74 +286,33 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 		if channelsMap.p[m.getChannelID()] == nil {
 			channelsMap.p[m.getChannelID()] = map[string]chan Message{}
 		}
-		channelsMap.p[m.getChannelID()][teamMembers[i].Id] = make(chan Message)
+		if channelsMap.p[m.getChannelID()][teamMembers[i].Id] == nil {
+			channelsMap.p[m.getChannelID()][teamMembers[i].Id] = make(chan Message)
+			defer channelsMap.finishWaitingMember(m.getChannelID(), teamMembers[i].Id)
+		}
 		channelsMap.Unlock()
-		defer channelsMap.finishWaitingMember(m.getChannelID(), teamMembers[i].Id)
 
+		var memberAvailable bool
 		for {
-			messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]
-			if messageReceived.isYes() || messageReceived.isNo() {
+			select {
+			case <-time.After(time.Second * time.Duration(timeout)):
+				memberAvailable = false
+			case messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]:
+				memberAvailable = true
+			}
+			if !memberAvailable || (messageReceived.isYes() || messageReceived.isNo()) {
 				break
 			}
 		}
 
-		if messageReceived.isNo() {
-			dailyMeetingMessage := &Message{
-				ID:      0,
-				Type:    "message",
-				Channel: m.getChannelID(),
-				Text:    "Ok, you can do it later, just type `@leanmanager resume` before the end of the day",
-			}
-			if err := dailyMeetingMessage.send(ws); err != nil {
+		if messageReceived.isNo() || !memberAvailable {
+			if err := sendNotAvailableMsj(ws, m.getChannelID()); err != nil {
 				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 			}
 			continue
 		}
 
-		if messageReceived.isYes() {
-			dailyMeetingMessage := &Message{
-				ID:      0,
-				Type:    "message",
-				Channel: m.getChannelID(),
-				Text:    teamMembers[i].Name + ", what did you do yesterday?.",
-			}
-			if err := dailyMeetingMessage.send(ws); err != nil {
-				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-			}
-		}
-
-		messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]
-		dailyMeetingMessage := &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text:    teamMembers[i].Name + ", what will you do today?.",
-		}
-		if err := dailyMeetingMessage.send(ws); err != nil {
-			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-		}
-
-		messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]
-		dailyMeetingMessage = &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text:    teamMembers[i].Name + ", are there any impediments in your way?.`",
-		}
-		if err := dailyMeetingMessage.send(ws); err != nil {
-			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-		}
-
-		messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]
-		dailyMeetingMessage = &Message{
-			ID:      0,
-			Type:    "message",
-			Channel: m.getChannelID(),
-			Text:    "Thanks " + teamMembers[i].Name,
-		}
-		if err := dailyMeetingMessage.send(ws); err != nil {
-			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-		}
+		runDailyByMember(ws, m.getChannelID(), teamMembers[i].Id)
 	}
 
 	endDailyMeetingMessage := &Message{
@@ -376,6 +326,57 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 	}
 
 	return
+}
+
+func manageResumeDaily(ws *websocket.Conn, m *Message) {
+	if m.User != "" {
+		runDailyByMember(ws, m.getChannelID(), "<@"+m.User+">")
+		return
+	}
+}
+
+func runDailyByMember(ws *websocket.Conn, channelID, memberID string) {
+	channelsMap.Lock()
+	if channelsMap.p[channelID] == nil {
+		channelsMap.p[channelID] = map[string]chan Message{}
+	}
+	if channelsMap.p[channelID][memberID] == nil {
+		channelsMap.p[channelID][memberID] = make(chan Message)
+		defer channelsMap.finishWaitingMember(channelID, memberID)
+	}
+	channelsMap.Unlock()
+
+	dailyMeetingMessage := &Message{
+		ID:      0,
+		Type:    "message",
+		Channel: channelID,
+		Text:    memberID + ", what did you do yesterday?",
+	}
+	if err := dailyMeetingMessage.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+		return
+	}
+
+	_ = <-channelsMap.p[channelID][memberID]
+	dailyMeetingMessage.Text = memberID + ", what will you do today?"
+	if err := dailyMeetingMessage.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+		return
+	}
+
+	_ = <-channelsMap.p[channelID][memberID]
+	dailyMeetingMessage.Text = memberID + ", are there any impediments in your way?"
+	if err := dailyMeetingMessage.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+		return
+	}
+
+	_ = <-channelsMap.p[channelID][memberID]
+	dailyMeetingMessage.Text = "Thanks " + memberID
+	if err := dailyMeetingMessage.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+		return
+	}
 }
 
 func manageUnderstoodCommand(ws *websocket.Conn, m *Message) {
@@ -430,7 +431,6 @@ func sendHelloMsj(ws *websocket.Conn, channelID string) error {
 }
 
 func sendStartDailyMsj(ws *websocket.Conn, channelID string) error {
-
 	m := &Message{
 		ID:      0,
 		Type:    "message",
@@ -440,8 +440,26 @@ func sendStartDailyMsj(ws *websocket.Conn, channelID string) error {
 	return m.send(ws)
 }
 
-func sendUnexpectedProblemMsj(ws *websocket.Conn, channelID string) error {
+func sendNotAvailableMsj(ws *websocket.Conn, channelID string) error {
+	m := &Message{
+		ID:      0,
+		Type:    "message",
+		Channel: channelID,
+		Text:    ":shit:... you can do it later, just type `@leanmanager resume` before the end of the day",
+	}
+	return m.send(ws)
+}
 
+func sendNotMembersRegisteredMsj(ws *websocket.Conn, channelID string) error {
+	m := &Message{
+		ID:      0,
+		Type:    "message",
+		Channel: channelID,
+		Text:    "There are no members registered yet. Type `@leanmanager: add @username` to add the first one",
+	}
+	return m.send(ws)
+}
+func sendUnexpectedProblemMsj(ws *websocket.Conn, channelID string) error {
 	m := &Message{
 		ID:      0,
 		Type:    "message",
@@ -510,7 +528,7 @@ func (m Message) isDeleteMemberDailyMsj(botID string) bool {
 	return false
 }
 
-func (m Message) isListMemersDailyMsj(botID string) bool {
+func (m Message) isListMembersDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: list") ||
 		strings.HasPrefix(m.Text, botID+": list")) {
 		return true
@@ -521,6 +539,14 @@ func (m Message) isListMemersDailyMsj(botID string) bool {
 func (m Message) isStartDaily(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: start") ||
 		strings.HasPrefix(m.Text, botID+": start")) {
+		return true
+	}
+	return false
+}
+
+func (m Message) isResumeDailyMsj(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: resume") ||
+		strings.HasPrefix(m.Text, botID+": resume")) {
 		return true
 	}
 	return false
@@ -585,14 +611,14 @@ func (pe *pendingMsjController) isMemberAwaited(channelID, memberID string) bool
 
 func (pe *pendingMsjController) finishWaitingMember(channelID, memberID string) {
 	pe.Lock()
-	defer pe.Unlock()
 	close(channelsMap.p[channelID][memberID])
 	delete(channelsMap.p[channelID], memberID)
+	pe.Unlock()
 }
 
 func (ac *atomicCounter) add(i uint64) uint64 {
 	ac.Lock()
-	defer ac.Unlock()
 	ac.i += i
+	ac.Unlock()
 	return ac.i
 }

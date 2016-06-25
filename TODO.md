@@ -9,6 +9,7 @@
 - [ ] do we need vendoring?
 - [ ] [Avoid Go's default client](https://medium.com/@nate510/don-t-use-go-s-default-http-client-4804cb19f779#.tmgmfnr34)
 - [ ] Move manageStartDaily logic to the API Server 
+- [ ] if error receiving messange, we should reconnect!! 
 - [x] avoid sync/atomic
 - [x] refactor manageMessage, it's too big
 - [x] @leanmanager: add without user panics
@@ -21,18 +22,18 @@
 
 ### Daily meetings
 
-- [ ] timeouts: https://gobyexample.com/timeouts #2
-- [ ] if error receiving messange, we should reconnect!! #2
-- [ ] check if newMember is member of the channel when added #2
-- [ ] allow to add many members with one command #2
-- [ ] schedule the daily meeting #2
-- [ ] show help commands #2 
-- [ ] resume command
+- [ ] schedule the daily meeting #3
+- [ ] show help commands #3 
 - [ ] validate responses (contain a Github PR or a Github Issue)
+- [ ] skip the daily by holidays
+- [ ] add all members of the channel
 - [ ] Package it as an Slack App (ready to deal with OAuth?)
 - [ ] Some improvements to the bot (icon, etc.)
 - [ ] Store the response of each member and do what?
+- [ ] check if newMember is member of the channel when added 
 - [ ] Better login, identify the admin
+- [x] resume command #3
+- [x] timeouts: https://gobyexample.com/timeouts #3
 - [x] avoid @leanmanager prefix when possible! #2
 - [x] differ messages by channel and user, channelID shouldn't be a global variable #2
 - [x] Launch the bot periodically and print a message
