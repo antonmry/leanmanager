@@ -17,7 +17,7 @@ var (
 	teamName      string
 	apiserverHost string
 	apiserverPort int
-	pathDb        string
+	pathDB        string
 	dbName        string
 )
 
@@ -28,15 +28,20 @@ var RootCmd = &cobra.Command{
 	Long: `This bot automates the tasks usually done by managers in development teams, so you can save costs and
 	let your team work in more productive tasks than simple management.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Args validation
 		if slackToken == "" {
 			slackToken = os.Getenv("LEANMANAGER_TOKEN")
 		}
-
 		if slackToken == "" {
 			log.SetFlags(0)
 			log.Fatal("Please, specify slackToken using -t or --slackToken")
 		}
 
+		if os.Getenv("LEANMANAGER_PATHDB") != "" && pathDB == "/tmp" {
+			pathDB = os.Getenv("LEANMANAGER_PATHDB")
+		}
+
+		// Launch Slackbot and API Server
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
@@ -45,7 +50,7 @@ var RootCmd = &cobra.Command{
 		}()
 		go func() {
 			defer wg.Done()
-			apiserver.LaunchAPIServer(pathDb, dbName, apiserverHost, apiserverPort)
+			apiserver.LaunchAPIServer(pathDB, dbName, apiserverHost, apiserverPort)
 		}()
 		wg.Wait()
 	},
@@ -62,7 +67,7 @@ func Execute() {
 func init() {
 	f := RootCmd.PersistentFlags()
 
-	f.StringVarP(&pathDb, "pathdb", "d", "/tmp", "The path to store the slackbot Db")
+	f.StringVarP(&pathDB, "pathdb", "d", "/tmp", "The path to store the slackbot Db")
 	f.StringVarP(&dbName, "dbname", "n", "leanmanager", "Name of the DB where data is stored")
 	f.StringVarP(&slackToken, "slackToken", "t", "", "Token used to connect to Slack.")
 	f.StringVarP(&teamName, "teamName", "e", "YOURTEAMNAME", "Name of the bot's team.")

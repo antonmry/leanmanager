@@ -1,12 +1,10 @@
-# Intellij Idea
-.idea
-*.iml
+# Leanmanager specifics
+leanmanager.db
 
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
 *.a
 *.so
-leanmanager
 
 # Folders
 _obj

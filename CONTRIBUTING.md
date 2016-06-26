@@ -7,13 +7,20 @@ Please note we have a code of conduct, please follow it in all your interactions
 
 ## Build
 
-To build leanmanager, you need to install previously go, my recomendation is to use the [official binary ditributions](https://golang.org/doc/install).
+To build leanmanager, you need to install previously the Go SDK, my recomendation is to use the [official binary ditributions](https://golang.org/doc/install).
 
 ```
 go get github.com/boltdb/bolt
 go get golang.org/x/net/websocket
 go get -v github.com/spf13/cobra/cobra
+go get github.com/emicklei/go-restful
 go get -v github.com/antonmry/leanmanager
+```
+
+If you want to create the Docker image:
+
+```
+docker build -t leanmanager:latest .
 ```
 
 ## Pull Request Process
