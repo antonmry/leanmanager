@@ -3,13 +3,14 @@
 ## Technical debt
 
 - [ ] Don't panic if API Server is down
-- [ ] Put in docker and automatic deployment (Travis?)
 - [ ] move database access from global variable to interface
 - [ ] unit testing!!
-- [ ] do we need vendoring?
+- [ ] Automatic deployment (Travis?)
+- [ ] do we need Godep?
 - [ ] [Avoid Go's default client](https://medium.com/@nate510/don-t-use-go-s-default-http-client-4804cb19f779#.tmgmfnr34)
 - [ ] Move manageStartDaily logic to the API Server 
 - [ ] if error receiving messange, we should reconnect!! 
+- [x] Put in docker #7
 - [x] avoid sync/atomic
 - [x] refactor manageMessage, it's too big
 - [x] @leanmanager: add without user panics

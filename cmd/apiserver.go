@@ -2,6 +2,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/antonmry/leanmanager/apiserver"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +14,12 @@ var apiserverCmd = &cobra.Command{
 	Short: "The APIs which control the leanmanager's behaviour",
 	Long:  `.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		apiserver.LaunchAPIServer(pathDb, dbName, apiserverHost, apiserverPort)
+
+		if os.Getenv("LEANMANAGER_PATHDB") != "" && pathDB == "/tmp" {
+			pathDB = os.Getenv("LEANMANAGER_PATHDB")
+		}
+
+		apiserver.LaunchAPIServer(pathDB, dbName, apiserverHost, apiserverPort)
 	},
 }
 

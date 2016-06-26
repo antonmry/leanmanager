@@ -7,14 +7,12 @@ The aim of Lean Manager is to be an end-to-end solution for management of develo
 
 ## Bot
 
-It's our main point of contact with leanmanager, it uses slack [Real Time API](https://api.slack.com/rtm). Rigth now the only functionality is running the Daily meetings making the questions but more functionality will be added in the future.
+It's our main point of contact with leanmanager, it uses Slack [Real Time API](https://api.slack.com/rtm). Rigth now the only functionality is running the Daily meetings making the questions but more functionality will be added in the future.
 
-To install leanmanager, you need to install previously the Go SDK, my recomendation is to use the [official binary ditributions](https://golang.org/doc/install).
-
-Then, just execute:
+To install and use leanmanager, you need Docker. Then, just execute:
 
 ```sh
-go get -v github.com/antonmry/leanmanager
+docker pull leanmanager:latest
 ```
 
 ### Daily meetings
@@ -27,18 +25,11 @@ Daily meetings are in beta phase, but you can use them as you can see in the fol
 To run it, you need to create a bot in the [slack bot creation page](https://my.slack.com/services/new/bot) and retrieve the token of your new bot. Then execute:
 
 ```sh
-leanmanager -t YOUR_TOKEN
+docker run -e LEANMANAGER_TOKEN=YOUR_TOKEN leanmanager:latest
 ```
 
-Also you can export the token as env variable:
+By default, leanmanager stores the database inside the docker image. If you want to persist the data between sessions, you can execute:
 
 ```sh
-export LEANMANAGER_TOKEN=YOUR_TOKEN
-leanmanager
-```
-
-By default, leanmanager stores the database in /tmp. If you want to persist the data between sessions, you can execute:
-
-```sh
-leanmanager -d /YOUR/PATH -n NAME_OF_THE_DB
+docker run --rm -e LEANMANAGER_TOKEN=$LEANMANAGER_TOKEN -e LEANMANAGER_PATHDB=/mnt -v $(pwd):/mnt leanmanager:latest
 ```
