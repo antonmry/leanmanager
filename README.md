@@ -1,4 +1,4 @@
-# leanmanager
+![leanmanager header](resources/header.png)
 It's time to replace your manager with a bot!
 
 ## Introduction
@@ -12,7 +12,7 @@ It's our main point of contact with leanmanager, it uses Slack [Real Time API](h
 To install and use leanmanager, you need Docker. Then, just execute:
 
 ```sh
-docker pull leanmanager:latest
+docker pull antonmry/leanmanager:latest
 ```
 
 ### Daily meetings
@@ -25,11 +25,11 @@ Daily meetings are in beta phase, but you can use them as you can see in the fol
 To run it, you need to create a bot in the [slack bot creation page](https://my.slack.com/services/new/bot) and retrieve the token of your new bot. Then execute:
 
 ```sh
-docker run -e LEANMANAGER_TOKEN=YOUR_TOKEN leanmanager:latest
+docker run -e LEANMANAGER_TOKEN=YOUR_TOKEN antonmry/leanmanager:latest
 ```
 
 By default, leanmanager stores the database inside the docker image. If you want to persist the data between sessions, you can execute:
 
 ```sh
-docker run --rm -e LEANMANAGER_TOKEN=$LEANMANAGER_TOKEN -e LEANMANAGER_PATHDB=/mnt -v $(pwd):/mnt leanmanager:latest
+docker run --rm -e LEANMANAGER_TOKEN=$LEANMANAGER_TOKEN -e LEANMANAGER_PATHDB=/mnt -v $(pwd):/mnt antonmry/leanmanager:latest
 ```

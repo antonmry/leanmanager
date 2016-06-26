@@ -20,7 +20,7 @@ go get -v github.com/antonmry/leanmanager
 If you want to create the Docker image:
 
 ```
-docker build -t leanmanager:latest .
+docker build -t antonmry/leanmanager:latest .
 ```
 
 ## Pull Request Process
