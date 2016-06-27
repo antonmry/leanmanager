@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -392,7 +393,177 @@ func manageUnderstoodCommand(ws *websocket.Conn, m *Message) {
 	}
 }
 
+func manageScheduleDaily(ws *websocket.Conn, m *Message) {
+
+	channelsMap.Lock()
+	if channelsMap.p[m.getChannelID()] == nil {
+		channelsMap.p[m.getChannelID()] = map[string]chan Message{}
+	}
+	if channelsMap.p[m.getChannelID()]["<@"+m.User+">"] == nil {
+		channelsMap.p[m.getChannelID()]["<@"+m.User+">"] = make(chan Message)
+		defer channelsMap.finishWaitingMember(m.getChannelID(), "<@"+m.User+">")
+	}
+	channelsMap.Unlock()
+
+	message := &Message{
+		ID:      0,
+		Type:    "message",
+		User:    "",
+		Channel: m.getChannelID(),
+		Text:    "What days of the week you would like to run the Daily meeting?",
+	}
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	var messageReceived Message
+	var doW []string
+
+	for {
+		log.Printf("DEBUG: time to sleep waiting for %s", m.User)
+
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+
+		log.Printf("DEBUG: message received %s", messageReceived)
+
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		doW = messageReceived.getValidDays()
+		log.Printf("DEBUG: is message ok?")
+
+		if len(doW) > 0 {
+			break
+		}
+
+		log.Printf("DEBUG: nop, it's not :-(")
+
+		message.Text = ":scream: Type something like `weekdays`, `monday tuesday wednesday` or `cancel`."
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+
+	}
+
+	message.Text = "What time do you want to start the meeting? :clock2:"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	var startHour string
+	var startTime time.Time
+
+	for {
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		var err error
+		startHour = messageReceived.getValidHour()
+		startTime, err = api.ConvertTime(startHour)
+
+		if startHour != "" && err == nil {
+			break
+		}
+
+		message.Text = ":scream: Type something like `13:00`, `08:00AM` or `cancel`."
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+	}
+
+	message.Text = "Do you want stablish a flexible time based in your team's members activity?"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	for {
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		if messageReceived.isNo() {
+			message.Text = fmt.Sprintf("Daily meeting scheduled on %s at %s", strings.Join(doW, ", "), startTime)
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			//TODO: Store the time and finish
+			return
+		}
+
+		if messageReceived.isYes() {
+			break
+		}
+
+		message.Text = ":scream: Type something like `yes`, `no` or `cancel`."
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+	}
+
+	message.Text = "What time is the limit to start? :clock8:"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	var limitHour string
+	var limitTime time.Time
+
+	for {
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		var err error
+		limitHour = messageReceived.getValidHour()
+		limitTime, err = api.ConvertTime(limitHour)
+
+		if limitHour != "" && err == nil && !limitTime.Before(startTime) {
+			break
+		}
+
+		if !limitTime.Before(startTime) {
+			message.Text = ":scream: Type something like `13:00`, `08:00AM` or `cancel`."
+		} else {
+			message.Text = "Ok, it's not how you start, it's how you finish.. but you have to start first :stuck_out_tongue_closed_eyes:"
+		}
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+	}
+
+	// TODO: Store the value
+	message.Text = fmt.Sprintf("Daily meeting scheduled on %s between %s and %s", strings.Join(doW, ", "), startHour, limitHour)
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+}
+
 func isExpectedMessage(m *Message) bool {
+	log.Printf("DEBUG: isExpectedMessage: received %s", m)
 
 	switch {
 	case m.Type != "message":
@@ -422,7 +593,7 @@ func sendHelloMsj(ws *websocket.Conn, channelID string) error {
 		Channel: channelID,
 		Text: "Hello team! I'm here to help you with your daily meetings. To add members " +
 			"to the daily meeting type `@leanmanager: add @username`, to setup the hour of the " +
-			"daily meeting, type something like `@leanmanager: schedule monday tuesday friday 13:00`.\n" +
+			"daily meeting, type something like `@leanmanager: schedule`.\n" +
 			"If you need help, just type `@leanmanager: help`",
 	}
 
@@ -504,7 +675,7 @@ func (m Message) isInitialMsj(botID string) bool {
 	}
 
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: hello") ||
-		strings.HasPrefix(m.Text, botID+": hello")) {
+		strings.HasPrefix(m.Text, "leanmanager: hello")) {
 		return true
 	}
 
@@ -513,7 +684,7 @@ func (m Message) isInitialMsj(botID string) bool {
 
 func (m Message) isAddMemberDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: add") ||
-		strings.HasPrefix(m.Text, botID+": add")) {
+		strings.HasPrefix(m.Text, "leanmanager: add")) {
 		return true
 	}
 
@@ -522,7 +693,7 @@ func (m Message) isAddMemberDailyMsj(botID string) bool {
 
 func (m Message) isDeleteMemberDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: delete") ||
-		strings.HasPrefix(m.Text, botID+": delete")) {
+		strings.HasPrefix(m.Text, "leanmanager: delete")) {
 		return true
 	}
 	return false
@@ -530,7 +701,7 @@ func (m Message) isDeleteMemberDailyMsj(botID string) bool {
 
 func (m Message) isListMembersDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: list") ||
-		strings.HasPrefix(m.Text, botID+": list")) {
+		strings.HasPrefix(m.Text, "leanmanager: list")) {
 		return true
 	}
 	return false
@@ -538,7 +709,15 @@ func (m Message) isListMembersDailyMsj(botID string) bool {
 
 func (m Message) isStartDaily(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: start") ||
-		strings.HasPrefix(m.Text, botID+": start")) {
+		strings.HasPrefix(m.Text, "leanmanager: start")) {
+		return true
+	}
+	return false
+}
+
+func (m Message) isScheduleDaily(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: schedule") ||
+		strings.HasPrefix(m.Text, "leanmanager: schedule")) {
 		return true
 	}
 	return false
@@ -546,7 +725,7 @@ func (m Message) isStartDaily(botID string) bool {
 
 func (m Message) isResumeDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: resume") ||
-		strings.HasPrefix(m.Text, botID+": resume")) {
+		strings.HasPrefix(m.Text, "leanmanager: resume")) {
 		return true
 	}
 	return false
@@ -554,7 +733,7 @@ func (m Message) isResumeDailyMsj(botID string) bool {
 
 func (m Message) isCommand(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: ") ||
-		strings.HasPrefix(m.Text, botID+": ")) {
+		strings.HasPrefix(m.Text, "leanmanager: ")) {
 		return true
 	}
 	return false
@@ -564,33 +743,41 @@ func (m Message) isYes() bool {
 	if m.Type != "message" {
 		return false
 	}
-	if len(m.Text) > 2 {
-		switch m.Text[len(m.Text)-3 : len(m.Text)] {
-		case "yes", "Yes", "YES", "yep", "si", "Sip", "sip", "sí", "Sí":
-			return true
-		}
-	}
-	return false
-
+	return strings.EqualFold(m.Text, "si") || strings.EqualFold(m.Text, "yes") ||
+		strings.EqualFold(m.Text, "sip") || strings.EqualFold(m.Text, "sí") ||
+		strings.EqualFold(m.Text, "yeah") || strings.EqualFold(m.Text, "ok")
 }
 
 func (m Message) isNo() bool {
 	if m.Type != "message" {
 		return false
 	}
-	if len(m.Text) > 1 {
-		switch m.Text[len(m.Text)-2 : len(m.Text)] {
-		case "No", "NO", "no":
-			return true
-		}
+	return strings.EqualFold(m.Text, "no") || strings.EqualFold(m.Text, "nop")
+}
+
+func (m Message) isCancel() bool {
+	if m.Type != "message" {
+		return false
 	}
-	if len(m.Text) > 2 {
-		switch m.Text[len(m.Text)-3 : len(m.Text)] {
-		case "Nop", "NOP", "nop":
-			return true
-		}
+	return strings.EqualFold(m.Text, "cancel")
+}
+
+func (m Message) getValidDays() []string {
+	if m.Type != "message" {
+		return nil
 	}
-	return false
+
+	re := regexp.MustCompile("(?i)(week|mon|tues|wednes|thurs|fri|satur|sun)[d][a][y]s?")
+	return re.FindAllString(m.Text, 7)
+}
+
+func (m Message) getValidHour() string {
+	if m.Type != "message" {
+		return ""
+	}
+
+	re := regexp.MustCompile("(?i)[0-2]?[0-9]:[0-9][0-9][A|P]?M?")
+	return re.FindString(m.Text)
 }
 
 // Message methods
