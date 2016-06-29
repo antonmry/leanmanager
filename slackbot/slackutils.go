@@ -58,6 +58,18 @@ type atomicCounter struct {
 	i uint64
 }
 
+type dailyStatusData struct {
+	lastDaily time.Time
+	startHour string
+	limitHour string
+	days      []string
+}
+
+type dailyScheduler struct {
+	sync.Mutex
+	d map[string]dailyStatusData
+}
+
 type pendingMsjController struct {
 	sync.Mutex
 	p map[string]map[string]chan Message
@@ -67,6 +79,10 @@ var counter = atomicCounter{}
 
 var channelsMap = pendingMsjController{
 	p: make(map[string]map[string]chan Message),
+}
+
+var channelsDailyMap = dailyScheduler{
+	d: make(map[string]dailyStatusData),
 }
 
 // Connection methods
@@ -420,12 +436,7 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 	var doW []string
 
 	for {
-		log.Printf("DEBUG: time to sleep waiting for %s", m.User)
-
 		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
-
-		log.Printf("DEBUG: message received %s", messageReceived)
-
 		if messageReceived.isCancel() {
 			message.Text = ":ok_hand:"
 			if err := message.send(ws); err != nil {
@@ -435,13 +446,9 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 		}
 
 		doW = messageReceived.getValidDays()
-		log.Printf("DEBUG: is message ok?")
-
 		if len(doW) > 0 {
 			break
 		}
-
-		log.Printf("DEBUG: nop, it's not :-(")
 
 		message.Text = ":scream: Type something like `weekdays`, `monday tuesday wednesday` or `cancel`."
 		if err := message.send(ws); err != nil {
@@ -504,7 +511,9 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 			if err := message.send(ws); err != nil {
 				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 			}
-			//TODO: Store the time and finish
+			if err := storeScheduledTime(m.getChannelID(), time.Time{}, startHour, "", doW); err != nil {
+				sendUnexpectedProblemMsj(ws, m.getChannelID())
+			}
 			return
 		}
 
@@ -555,16 +564,55 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 		}
 	}
 
-	// TODO: Store the value
-	message.Text = fmt.Sprintf("Daily meeting scheduled on %s between %s and %s", strings.Join(doW, ", "), startHour, limitHour)
+	if err := storeScheduledTime(m.getChannelID(), time.Time{}, startHour, "", doW); err != nil {
+		sendUnexpectedProblemMsj(ws, m.getChannelID())
+	}
+
+	message.Text = fmt.Sprintf("Daily meeting scheduled on %s between %s and %s",
+		strings.Join(doW, ", "), startHour, limitHour)
 	if err := message.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 	}
 }
 
-func isExpectedMessage(m *Message) bool {
-	log.Printf("DEBUG: isExpectedMessage: received %s", m)
+func storeScheduledTime(channelID string, lastDaily time.Time, startHour string, limitHour string, doW []string) error {
 
+	// TODO: invoke the API to store it in the DB
+	channelsDailyMap.Lock()
+	channelsDailyMap.d[channelID] = dailyStatusData{
+		lastDaily: time.Time{},
+		startHour: startHour,
+		limitHour: limitHour,
+		days:      doW,
+	}
+
+	channelsDailyMap.Unlock()
+	return nil
+}
+
+func manageInfoDaily(ws *websocket.Conn, m *Message) {
+	message := &Message{
+		ID:      0,
+		Type:    "message",
+		User:    "",
+		Channel: m.getChannelID(),
+		Text: "There is no Daily Meeting scheduled yet, type `@leanmanager: daily schedule` " +
+			"to schedule your next Daily Meeting",
+	}
+	channelsDailyMap.Lock()
+
+	// TODO, add last meeting time!
+	if i, ok := channelsDailyMap.d[m.getChannelID()]; ok {
+		message.Text = fmt.Sprintf("Daily Meeting scheduled on %s between %s and %s",
+			strings.Join(i.days, ", "), i.startHour, i.limitHour)
+	}
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+	channelsDailyMap.Unlock()
+}
+
+func isExpectedMessage(m *Message) bool {
 	switch {
 	case m.Type != "message":
 		return false
@@ -715,9 +763,17 @@ func (m Message) isStartDaily(botID string) bool {
 	return false
 }
 
+func (m Message) isInfoDaily(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily info") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily info")) {
+		return true
+	}
+	return false
+}
+
 func (m Message) isScheduleDaily(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: schedule") ||
-		strings.HasPrefix(m.Text, "leanmanager: schedule")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily schedule") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily schedule")) {
 		return true
 	}
 	return false
