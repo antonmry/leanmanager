@@ -29,7 +29,7 @@ func LaunchSlackbot(slackTokenArg, teamIDArg, apiserverHostArg string, apiserver
 
 	log.Println("slackbot: bot connected")
 
-	// Scheduled tasks (timeouts and daily launching)
+	// Scheduled tasks (daily launching)
 	t := time.NewTicker(600 * time.Second)
 	go func() {
 		for {
@@ -74,6 +74,8 @@ func manageMessage(m Message, botID string, ws *websocket.Conn) {
 		manageStartDaily(ws, &m)
 	case m.isResumeDailyMsj(botID):
 		manageResumeDaily(ws, &m)
+	case m.isInfoDaily(botID):
+		manageInfoDaily(ws, &m)
 	case m.isScheduleDaily(botID):
 		manageScheduleDaily(ws, &m)
 	case m.isCommand(botID):
