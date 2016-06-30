@@ -33,6 +33,7 @@
 - [ ] Store the response of each member and do what?
 - [ ] check if newMember is member of the channel when added 
 - [ ] Better login, identify the admin
+- [ ] Add timezones to the bot
 - [x] resume command #3
 - [x] timeouts: https://gobyexample.com/timeouts #3
 - [x] avoid @leanmanager prefix when possible! #2

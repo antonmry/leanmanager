@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -60,8 +61,8 @@ type atomicCounter struct {
 
 type dailyStatusData struct {
 	lastDaily time.Time
-	startHour string
-	limitHour string
+	startTime time.Time
+	limitTime time.Time
 	days      []string
 }
 
@@ -445,6 +446,7 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 			return
 		}
 
+		// TODO: manage weekdays and everyday
 		doW = messageReceived.getValidDays()
 		if len(doW) > 0 {
 			break
@@ -507,13 +509,11 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 		}
 
 		if messageReceived.isNo() {
-			message.Text = fmt.Sprintf("Daily meeting scheduled on %s at %s", strings.Join(doW, ", "), startTime)
-			if err := message.send(ws); err != nil {
-				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-			}
-			if err := storeScheduledTime(m.getChannelID(), time.Time{}, startHour, "", doW); err != nil {
+			if err := storeScheduledTime(m.getChannelID(), time.Time{}, startTime, time.Time{}, doW); err != nil {
 				sendUnexpectedProblemMsj(ws, m.getChannelID())
+				return
 			}
+			manageInfoDaily(ws, m)
 			return
 		}
 
@@ -564,25 +564,21 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 		}
 	}
 
-	if err := storeScheduledTime(m.getChannelID(), time.Time{}, startHour, "", doW); err != nil {
+	if err := storeScheduledTime(m.getChannelID(), time.Time{}, startTime, limitTime, doW); err != nil {
 		sendUnexpectedProblemMsj(ws, m.getChannelID())
 	}
 
-	message.Text = fmt.Sprintf("Daily meeting scheduled on %s between %s and %s",
-		strings.Join(doW, ", "), startHour, limitHour)
-	if err := message.send(ws); err != nil {
-		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-	}
+	manageInfoDaily(ws, m)
 }
 
-func storeScheduledTime(channelID string, lastDaily time.Time, startHour string, limitHour string, doW []string) error {
+func storeScheduledTime(channelID string, lastDaily, startTime, limitTime time.Time, doW []string) error {
 
 	// TODO: invoke the API to store it in the DB
 	channelsDailyMap.Lock()
 	channelsDailyMap.d[channelID] = dailyStatusData{
 		lastDaily: time.Time{},
-		startHour: startHour,
-		limitHour: limitHour,
+		startTime: startTime,
+		limitTime: limitTime,
 		days:      doW,
 	}
 
@@ -601,11 +597,21 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 	}
 	channelsDailyMap.Lock()
 
-	// TODO, add last meeting time!
 	if i, ok := channelsDailyMap.d[m.getChannelID()]; ok {
-		message.Text = fmt.Sprintf("Daily Meeting scheduled on %s between %s and %s",
-			strings.Join(i.days, ", "), i.startHour, i.limitHour)
+		if i.limitTime.IsZero() {
+			message.Text = fmt.Sprintf("Daily Meeting scheduled on %s at %02d:%02d",
+				strings.Join(i.days, ", "), i.startTime.Hour(), i.startTime.Minute())
+		} else {
+			message.Text = fmt.Sprintf("Daily Meeting scheduled on %s between %02d:%02d and %02d:%02d",
+				strings.Join(i.days, ", "),
+				i.startTime.Hour(), i.startTime.Minute(),
+				i.limitTime.Hour(), i.limitTime.Minute())
+		}
+		if !i.lastDaily.IsZero() {
+			message.Text += fmt.Sprintf("\nLast meeting done %2.2f hours ago", time.Since(i.lastDaily).Hours())
+		}
 	}
+
 	if err := message.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 	}
@@ -664,7 +670,7 @@ func sendNotAvailableMsj(ws *websocket.Conn, channelID string) error {
 		ID:      0,
 		Type:    "message",
 		Channel: channelID,
-		Text:    ":shit:... you can do it later, just type `@leanmanager resume` before the end of the day",
+		Text:    ":shit:... you can do it later, just type `@leanmanager: resume` before the end of the day",
 	}
 	return m.send(ws)
 }
@@ -823,8 +829,11 @@ func (m Message) getValidDays() []string {
 		return nil
 	}
 
+	// TODO: we have to manage weekdays and everyday, also normalize days and sort the slice
 	re := regexp.MustCompile("(?i)(week|mon|tues|wednes|thurs|fri|satur|sun)[d][a][y]s?")
-	return re.FindAllString(m.Text, 7)
+	days := re.FindAllString(m.Text, 7)
+	sort.Strings(days)
+	return days
 }
 
 func (m Message) getValidHour() string {
