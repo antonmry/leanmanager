@@ -20,16 +20,17 @@ import (
 	"os"
 	"strconv"
 
-	. "github.com/antonmry/leanmanager/api"
+	"github.com/antonmry/leanmanager/api"
 	storage "github.com/antonmry/leanmanager/storage"
 	"github.com/emicklei/go-restful"
 	"github.com/emicklei/go-restful/swagger"
 )
 
+// DAO represents the access to the DB, it will be refactored to contain DB access info
 type DAO struct {
 }
 
-func (dao DAO) Register(container *restful.Container) {
+func (dao DAO) register(container *restful.Container) {
 
 	channelWs := new(restful.WebService)
 
@@ -43,7 +44,7 @@ func (dao DAO) Register(container *restful.Container) {
 		// docs
 		Doc("create a channel").
 		Operation("createChannel").
-		Reads(Channel{}))
+		Reads(api.Channel{}))
 
 	container.Add(channelWs)
 
@@ -61,20 +62,20 @@ func (dao DAO) Register(container *restful.Container) {
 		Operation("findMember").
 		Param(memberWs.PathParameter("channel-id", "identifier of the channel").DataType("string")).
 		Param(memberWs.PathParameter("member-id", "identifier of the member").DataType("string")).
-		Writes(Member{}))
+		Writes(api.Member{}))
 
 	memberWs.Route(memberWs.GET("/{channel-id}/").To(dao.findMembersByChannel).
 		// docs
 		Doc("get all member in a channel").
 		Operation("findMembersByChannel").
 		Param(memberWs.PathParameter("channel-id", "identifier of the channel").DataType("string")).
-		Writes(Member{}))
+		Writes(api.Member{}))
 
 	memberWs.Route(memberWs.POST("").To(dao.createMember).
 		// docs
 		Doc("create a member").
 		Operation("createMember").
-		Reads(Member{}))
+		Reads(api.Member{}))
 
 	memberWs.Route(memberWs.DELETE("/{channel-id}/{member-id}").To(dao.removeMember).
 		// docs
@@ -87,7 +88,7 @@ func (dao DAO) Register(container *restful.Container) {
 }
 
 func (dao *DAO) createChannel(request *restful.Request, response *restful.Response) {
-	c := new(Channel)
+	c := new(api.Channel)
 	err := request.ReadEntity(c)
 	if err != nil {
 		response.AddHeader("Content-Type", "text/plain")
@@ -107,9 +108,9 @@ func (dao *DAO) createChannel(request *restful.Request, response *restful.Respon
 
 func (dao DAO) findMember(request *restful.Request, response *restful.Response) {
 
-	channelId := request.PathParameter("channel-id")
-	memberId := request.PathParameter("member-id")
-	m, err := storage.GetMemberByName(channelId, memberId)
+	channelID := request.PathParameter("channel-id")
+	memberID := request.PathParameter("member-id")
+	m, err := storage.GetMemberByName(channelID, memberID)
 	if err != nil {
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusNotFound, "404: Member could not be found.")
@@ -122,20 +123,20 @@ func (dao DAO) findMember(request *restful.Request, response *restful.Response) 
 
 func (dao DAO) findMembersByChannel(request *restful.Request, response *restful.Response) {
 
-	channelId := request.PathParameter("channel-id")
-	var teamMembers []Member
-	if err := storage.GetMembersByChannel(channelId, &teamMembers); err != nil {
+	channelID := request.PathParameter("channel-id")
+	var teamMembers []api.Member
+	if err := storage.GetMembersByChannel(channelID, &teamMembers); err != nil {
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusNotFound, "404: Member could not be found.")
 		return
 
 	}
 	response.WriteEntity(teamMembers)
-	log.Printf("apiserver: %d members found by channel %s", len(teamMembers), channelId)
+	log.Printf("apiserver: %d members found by channel %s", len(teamMembers), channelID)
 }
 
 func (dao *DAO) createMember(request *restful.Request, response *restful.Response) {
-	m := new(Member)
+	m := new(api.Member)
 	err := request.ReadEntity(m)
 	if err != nil {
 		response.AddHeader("Content-Type", "text/plain")
@@ -154,17 +155,18 @@ func (dao *DAO) createMember(request *restful.Request, response *restful.Respons
 }
 
 func (dao *DAO) removeMember(request *restful.Request, response *restful.Response) {
-	memberId := request.PathParameter("member-id")
-	channelId := request.PathParameter("channel-id")
-	err := storage.DeleteMember(channelId, memberId)
+	memberID := request.PathParameter("member-id")
+	channelID := request.PathParameter("channel-id")
+	err := storage.DeleteMember(channelID, memberID)
 	if err != nil {
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
 	}
-	log.Printf("apiserver: member %s deleted", memberId)
+	log.Printf("apiserver: member %s deleted", memberID)
 }
 
+// LaunchAPIServer is invoked by CLI to initiate the API Server
 func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 
 	// Parameters
@@ -182,7 +184,7 @@ func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 
 	wsContainer := restful.NewContainer()
 	dao := DAO{}
-	dao.Register(wsContainer)
+	dao.register(wsContainer)
 
 	config := swagger.Config{
 		WebServices:    wsContainer.RegisteredWebServices(),
