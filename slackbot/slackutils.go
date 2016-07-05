@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -63,7 +62,7 @@ type dailyStatusData struct {
 	lastDaily time.Time
 	startTime time.Time
 	limitTime time.Time
-	days      []string
+	days      []time.Weekday
 }
 
 type dailyScheduler struct {
@@ -286,6 +285,12 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 		return
 	}
 
+	channelsDailyMap.Lock()
+	d := channelsDailyMap.d[m.getChannelID()]
+	d.lastDaily = time.Now()
+	channelsDailyMap.d[m.getChannelID()] = d
+	defer channelsDailyMap.Unlock()
+
 	var messageReceived Message
 
 	for i := 0; i < len(teamMembers[:]); i++ {
@@ -434,7 +439,7 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 	}
 
 	var messageReceived Message
-	var doW []string
+	var doW []time.Weekday
 
 	for {
 		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
@@ -446,7 +451,6 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 			return
 		}
 
-		// TODO: manage weekdays and everyday
 		doW = messageReceived.getValidDays()
 		if len(doW) > 0 {
 			break
@@ -571,7 +575,7 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 	manageInfoDaily(ws, m)
 }
 
-func storeScheduledTime(channelID string, lastDaily, startTime, limitTime time.Time, doW []string) error {
+func storeScheduledTime(channelID string, lastDaily, startTime, limitTime time.Time, doW []time.Weekday) error {
 
 	// TODO: invoke the API to store it in the DB
 	channelsDailyMap.Lock()
@@ -598,12 +602,19 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 	channelsDailyMap.Lock()
 
 	if i, ok := channelsDailyMap.d[m.getChannelID()]; ok {
+
+		var b bytes.Buffer
+		b.WriteString("Daily Meeting scheduled on ")
+
+		for _, w := range i.days {
+			b.WriteString(w.String() + ", ")
+		}
+
 		if i.limitTime.IsZero() {
-			message.Text = fmt.Sprintf("Daily Meeting scheduled on %s at %02d:%02d",
-				strings.Join(i.days, ", "), i.startTime.Hour(), i.startTime.Minute())
+			message.Text = fmt.Sprintf(b.String()[:len(b.String())-2]+" at %02d:%02d",
+				i.startTime.Hour(), i.startTime.Minute())
 		} else {
-			message.Text = fmt.Sprintf("Daily Meeting scheduled on %s between %02d:%02d and %02d:%02d",
-				strings.Join(i.days, ", "),
+			message.Text = fmt.Sprintf(b.String()[:len(b.String())-2]+" between %02d:%02d and %02d:%02d",
 				i.startTime.Hour(), i.startTime.Minute(),
 				i.limitTime.Hour(), i.limitTime.Minute())
 		}
@@ -824,16 +835,40 @@ func (m Message) isCancel() bool {
 	return strings.EqualFold(m.Text, "cancel")
 }
 
-func (m Message) getValidDays() []string {
+func (m Message) getValidDays() (doW []time.Weekday) {
 	if m.Type != "message" {
 		return nil
 	}
 
-	// TODO: we have to manage weekdays and everyday, also normalize days and sort the slice
-	re := regexp.MustCompile("(?i)(week|mon|tues|wednes|thurs|fri|satur|sun)[d][a][y]s?")
+	re := regexp.MustCompile("(?i)(every|week|mon|tues|wednes|thurs|fri|satur|sun)[d][a][y]s?")
 	days := re.FindAllString(m.Text, 7)
-	sort.Strings(days)
-	return days
+
+	for _, d := range days {
+		switch strings.ToLower(d) {
+		case "monday":
+			doW = append(doW, time.Monday)
+		case "tuesday":
+			doW = append(doW, time.Tuesday)
+		case "wednesday":
+			doW = append(doW, time.Wednesday)
+		case "thursday":
+			doW = append(doW, time.Thursday)
+		case "friday":
+			doW = append(doW, time.Friday)
+		case "saturday":
+			doW = append(doW, time.Saturday)
+		case "sunday":
+			doW = append(doW, time.Sunday)
+		case "weekday", "weekdays":
+			doW = append(doW, []time.Weekday{time.Monday, time.Tuesday, time.Wednesday,
+				time.Thursday, time.Friday}...)
+		case "everyday":
+			doW = append(doW, []time.Weekday{time.Monday, time.Tuesday, time.Wednesday,
+				time.Thursday, time.Friday, time.Saturday, time.Sunday}...)
+		}
+	}
+
+	return doW
 }
 
 func (m Message) getValidHour() string {
