@@ -1,17 +1,4 @@
-// Copyright © 2016 leanmanager
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// Package apiserver provides the APIs to build the leanmanager logic
 package apiserver
 
 import (
@@ -21,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/antonmry/leanmanager/api"
-	storage "github.com/antonmry/leanmanager/storage"
+	"github.com/antonmry/leanmanager/storage"
 	"github.com/emicklei/go-restful"
 	"github.com/emicklei/go-restful/swagger"
 )
@@ -31,6 +18,29 @@ type DAO struct {
 }
 
 func (dao DAO) register(container *restful.Container) {
+
+	dailyWs := new(restful.WebService)
+
+	dailyWs.
+		Path("/dailymeetings").
+		Doc("Manage Daily Meetings").
+		Consumes(restful.MIME_JSON, restful.MIME_XML).
+		Produces(restful.MIME_JSON, restful.MIME_XML)
+
+	dailyWs.Route(dailyWs.POST("").To(dao.createDailyMeeting).
+		// docs
+		Doc("create a Daily Meeting").
+		Operation("createDailyMeeting").
+		Reads(api.DailyMeeting{}))
+
+	dailyWs.Route(dailyWs.GET("/{bot-id}/").To(dao.findDailyMeetingsByBot).
+		// docs
+		Doc("get all Daily Meetings associated to a bot").
+		Operation("findDailyMeetingsByBot").
+		Param(dailyWs.PathParameter("bot-id", "identifier of the bot").DataType("string")).
+		Writes(api.DailyMeeting{}))
+
+	container.Add(dailyWs)
 
 	channelWs := new(restful.WebService)
 
@@ -87,6 +97,39 @@ func (dao DAO) register(container *restful.Container) {
 	container.Add(memberWs)
 }
 
+func (dao *DAO) createDailyMeeting(request *restful.Request, response *restful.Response) {
+	d := new(api.DailyMeeting)
+	err := request.ReadEntity(d)
+	if err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+	}
+	err = storage.StoreDailyMeeting(*d)
+	if err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+
+	}
+	response.WriteHeaderAndEntity(http.StatusCreated, d)
+	log.Printf("apiserver: daily meeting for channel %s created", d.ChannelID)
+}
+
+func (dao DAO) findDailyMeetingsByBot(request *restful.Request, response *restful.Response) {
+
+	botID := request.PathParameter("bot-id")
+	var teamDailyMeetings []api.DailyMeeting
+	if err := storage.GetDailyMeetingsByBot(botID, &teamDailyMeetings); err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusNotFound, "404: Member could not be found.")
+		return
+
+	}
+	response.WriteEntity(teamDailyMeetings)
+	log.Printf("apiserver: %d daily meetings found by bot %s", len(teamDailyMeetings), botID)
+}
+
 func (dao *DAO) createChannel(request *restful.Request, response *restful.Response) {
 	c := new(api.Channel)
 	err := request.ReadEntity(c)
@@ -103,7 +146,7 @@ func (dao *DAO) createChannel(request *restful.Request, response *restful.Respon
 
 	}
 	response.WriteHeaderAndEntity(http.StatusCreated, c)
-	log.Printf("apiserver: channel %s created", c.Id)
+	log.Printf("apiserver: channel %s created", c.ID)
 }
 
 func (dao DAO) findMember(request *restful.Request, response *restful.Response) {
@@ -173,11 +216,11 @@ func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 	portStr := strconv.Itoa(portArg)
 
 	// Database initialization
-	err := storage.InitDb(pathDbArg + "/" + dbNameArg + ".db")
+	err := storage.InitDB(pathDbArg + "/" + dbNameArg + ".db")
 	if err != nil {
 		log.Fatalf("Error opening the database %s: %s", pathDbArg+"/"+dbNameArg+".db", err)
 	}
-	defer storage.CloseDb()
+	defer storage.CloseDB()
 
 	// Only for debug:
 	restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
@@ -192,7 +235,7 @@ func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 		ApiPath:        "/apidocs.json",
 
 		SwaggerPath:     "/apidocs/",
-		SwaggerFilePath: "resources/dist",
+		SwaggerFilePath: "../resources/dist",
 	}
 	swagger.RegisterSwaggerService(config, wsContainer)
 

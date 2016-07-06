@@ -1,28 +1,16 @@
-// Copyright © 2016 leanmanager
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package slackbot
+// Package storage contains the logic to persist data in the DB
+package storage
 
 import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
 
-	. "github.com/antonmry/leanmanager/api"
+	"github.com/antonmry/leanmanager/api"
 	"github.com/boltdb/bolt"
 )
 
+// NotMemberFoundError is returned when member isn't stored in the database
 type NotMemberFoundError string
 
 var db *bolt.DB
@@ -31,19 +19,30 @@ func (f NotMemberFoundError) Error() string {
 	return fmt.Sprintf("Not member found with username %s", string(f))
 }
 
-func InitDb(path string) error {
+// InitDB initializes the database, creating or opening the file
+func InitDB(path string) error {
 	var err error
 	db, err = bolt.Open(path, 0600, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return db.Update(func(tx *bolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte("dailymeetings")); err != nil {
+			return fmt.Errorf("dbutils: create bucket: %s", err)
+		}
+		return nil
+	})
 }
 
-func CloseDb() error {
+// CloseDB terminate the DB Session in a properly way
+func CloseDB() error {
 	return db.Close()
 }
 
-func StoreChannel(channelToBeCreated Channel) error {
+// StoreChannel create a bucket by channel where data can be stored
+func StoreChannel(channelToBeCreated api.Channel) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		_, err := tx.CreateBucketIfNotExists([]byte(channelToBeCreated.Id))
+		_, err := tx.CreateBucketIfNotExists([]byte(channelToBeCreated.ID))
 		if err != nil {
 			return fmt.Errorf("dbutils: create bucket: %s", err)
 		}
@@ -51,11 +50,12 @@ func StoreChannel(channelToBeCreated Channel) error {
 	})
 }
 
-func StoreMember(member Member) error {
+// StoreMember persists a member inside a bucket identifying the channel
+func StoreMember(member api.Member) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(member.ChannelId))
+		b := tx.Bucket([]byte(member.ChannelID))
 		if b == nil {
-			return fmt.Errorf("dbutils: bucket %s not created.", member.ChannelId)
+			return fmt.Errorf("dbutils: bucket %s not created", member.ChannelID)
 		}
 
 		var buf bytes.Buffer
@@ -63,30 +63,32 @@ func StoreMember(member Member) error {
 		enc.Encode(member)
 
 		// Persist bytes to users bucket.
-		return b.Put([]byte(member.Id), buf.Bytes())
+		return b.Put([]byte(member.ID), buf.Bytes())
 	})
 }
 
-func DeleteMember(channelId, memberId string) error {
+// DeleteMember deletes a member from a bucket which identifies the channel
+func DeleteMember(channelID, memberID string) error {
 	return db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(channelId))
+		b := tx.Bucket([]byte(channelID))
 		if b == nil {
-			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created", channelID)
 		}
 
-		if v := b.Get([]byte(memberId)); v == nil {
-			return NotMemberFoundError(memberId)
+		if v := b.Get([]byte(memberID)); v == nil {
+			return NotMemberFoundError(memberID)
 		}
 
-		return b.Delete([]byte(memberId))
+		return b.Delete([]byte(memberID))
 	})
 }
 
-func GetMemberByName(channelId, memberName string) (member *Member, err error) {
+// GetMemberByName returns member which is identified by a string, the name
+func GetMemberByName(channelID, memberName string) (member *api.Member, err error) {
 	err = db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(channelId))
+		b := tx.Bucket([]byte(channelID))
 		if b == nil {
-			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created", channelID)
 		}
 		v := b.Get([]byte(memberName))
 		if v == nil {
@@ -102,17 +104,18 @@ func GetMemberByName(channelId, memberName string) (member *Member, err error) {
 	return
 }
 
-func GetMembersByChannel(channelId string, teamMembers *[]Member) error {
+// GetMembersByChannel returns all members stored in a bucket
+func GetMembersByChannel(channelID string, teamMembers *[]api.Member) error {
 
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
-		b := tx.Bucket([]byte(channelId))
+		b := tx.Bucket([]byte(channelID))
 		if b == nil {
-			return fmt.Errorf("dbutils: bucket %s not created.", channelId)
+			return fmt.Errorf("dbutils: bucket %s not created", channelID)
 		}
 
 		c := b.Cursor()
-		var member Member
+		var member api.Member
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 
@@ -120,6 +123,52 @@ func GetMembersByChannel(channelId string, teamMembers *[]Member) error {
 			dec := gob.NewDecoder(&buf)
 			dec.Decode(&member)
 			*teamMembers = append(*teamMembers, member)
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+// StoreDailyMeeting persists the members and configuration of a Daily Meeting
+func StoreDailyMeeting(daily api.DailyMeeting) error {
+	// TODO: persist by TeamID or BotID
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("dailymeetings"))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket dailymeetings not created")
+		}
+
+		var buf bytes.Buffer
+		enc := gob.NewEncoder(&buf)
+		enc.Encode(daily)
+
+		// Persist bytes to daily meetings bucket.
+		return b.Put([]byte(daily.ChannelID), buf.Bytes())
+	})
+}
+
+// GetDailyMeetingsByBot returns all the daily meeting configuration associated to a bot
+func GetDailyMeetingsByBot(botID string, teamDailyMeetings *[]api.DailyMeeting) error {
+
+	// TODO: we are not filtering by botID
+	err := db.View(func(tx *bolt.Tx) error {
+		// Assume bucket exists and has keys
+		b := tx.Bucket([]byte("dailymeetings"))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket dailymeetings not created")
+		}
+
+		d := b.Cursor()
+		var daily api.DailyMeeting
+
+		for k, v := d.First(); k != nil; k, v = d.Next() {
+
+			buf := *bytes.NewBuffer(v)
+			dec := gob.NewDecoder(&buf)
+			dec.Decode(&daily)
+			*teamDailyMeetings = append(*teamDailyMeetings, daily)
 		}
 
 		return nil

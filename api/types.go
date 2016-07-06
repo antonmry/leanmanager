@@ -1,34 +1,35 @@
-// Copyright © 2016 leanmanager
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
+// Package api contains the types used and exposed by the API Server
 package api
 
+import "time"
+
+// Member represents a member of the team
 type Member struct {
-	Id        string `json:"id"`
+	ID        string `json:"id"`
 	Name      string `json:"name"`
-	ChannelId string `json:"channelId"`
-	TeamId    string `json:"teamId"`
+	ChannelID string `json:"channelId"`
+	TeamID    string `json:"teamId"`
 }
 
+// Channel represents a channel or group where members chat
 type Channel struct {
-	Id     string `json:"id"`
+	ID     string `json:"id"`
 	Name   string `json:"name"`
-	TeamId string `json:"teamId"`
+	TeamID string `json:"teamId"`
 }
 
+// Team represents a group of persons who work together
 type Team struct {
-	Id    string `json:"id"`
+	ID    string `json:"id"`
 	Name  string `json:"name"`
 	Token string `json:"slackToken"`
+}
+
+// DailyMeeting represents a Daily Meeting with its status
+type DailyMeeting struct {
+	ChannelID string         `json:"channelId"`
+	LastDaily time.Time      `json:"lastDaily"`
+	StartTime time.Time      `json:"startTime"`
+	LimitTime time.Time      `json:"limitTime"`
+	Days      []time.Weekday `json:"days"`
 }
