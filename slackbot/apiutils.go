@@ -27,6 +27,42 @@ func storeChannel(c *api.Channel) error {
 	return nil
 }
 
+func addDailyMeeting(daily *api.DailyMeeting, botID string) error {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(&daily)
+	resp, err := http.Post(apiserverURL+"/dailymeetings",
+		"application/json", &buf)
+
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 201 {
+		return fmt.Errorf("apiutils: error invoking API Server to store new daily meeting for channel %s: %v",
+			daily.ChannelID, err)
+	}
+
+	return nil
+}
+
+func listDailyMeetings(botID string) (teamDailyMeetings []api.DailyMeeting, err error) {
+	resp, err := http.Get(apiserverURL + "/dailymeetings/")
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 200 {
+		return nil, fmt.Errorf("slackbot: error invoking API Server to retrieve daily members "+
+			" of bot: %v", err)
+	}
+
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("slackbot: error parsing API Server response with "+
+			"daily meetings of bot: %v", err)
+	}
+
+	json.Unmarshal(buf, &teamDailyMeetings)
+
+	return teamDailyMeetings, nil
+}
+
 func addTeamMember(member *api.Member) error {
 	var buf bytes.Buffer
 	err := json.NewEncoder(&buf).Encode(&member)
@@ -37,7 +73,7 @@ func addTeamMember(member *api.Member) error {
 
 	if err != nil || resp.StatusCode != 201 {
 		return fmt.Errorf("apiutils: error invoking API Server to store new member %s in channel %s: %v",
-			member.Name, member.ChannelId, err)
+			member.Name, member.ChannelID, err)
 	}
 
 	return nil
@@ -48,14 +84,14 @@ func delTeamMember(member *api.Member) error {
 	clientAPI := &http.Client{}
 
 	delMemberReq, _ := http.NewRequest("DELETE", apiserverURL+"/members/"+
-		member.ChannelId+"/"+member.Id, nil)
+		member.ChannelID+"/"+member.ID, nil)
 
 	resp, err := clientAPI.Do(delMemberReq)
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != 200 {
 		return fmt.Errorf("apiutils: error invoking API Server to delete member %s in channel %s: %v",
-			member.Id, member.ChannelId, err)
+			member.ID, member.ChannelID, err)
 	}
 
 	return nil

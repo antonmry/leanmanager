@@ -58,16 +58,9 @@ type atomicCounter struct {
 	i uint64
 }
 
-type dailyStatusData struct {
-	lastDaily time.Time
-	startTime time.Time
-	limitTime time.Time
-	days      []time.Weekday
-}
-
 type dailyScheduler struct {
 	sync.Mutex
-	d map[string]dailyStatusData
+	d map[string]api.DailyMeeting
 }
 
 type pendingMsjController struct {
@@ -82,7 +75,7 @@ var channelsMap = pendingMsjController{
 }
 
 var channelsDailyMap = dailyScheduler{
-	d: make(map[string]dailyStatusData),
+	d: make(map[string]api.DailyMeeting),
 }
 
 // Connection methods
@@ -142,9 +135,9 @@ func receiveMessage(ws *websocket.Conn) (m Message, err error) {
 func manageHello(ws *websocket.Conn, m *Message) {
 
 	newChannel := api.Channel{
-		Id:     m.getChannelID(),
+		ID:     m.getChannelID(),
 		Name:   m.getChannelID(),
-		TeamId: teamID}
+		TeamID: teamID}
 
 	if err := storeChannel(&newChannel); err != nil {
 		log.Printf("slackutils: API Server is failing storing channel %s: %s\n", m.getChannelID(), err)
@@ -175,10 +168,10 @@ func manageAddMember(ws *websocket.Conn, m *Message) {
 	}
 
 	newMember := api.Member{
-		Id:        m.Text[strings.Index(m.Text, ": add")+6:],
+		ID:        m.Text[strings.Index(m.Text, ": add")+6:],
 		Name:      m.Text[strings.Index(m.Text, ": add")+6:],
-		ChannelId: m.getChannelID(),
-		TeamId:    teamID,
+		ChannelID: m.getChannelID(),
+		TeamID:    teamID,
 	}
 
 	if err := addTeamMember(&newMember); err != nil {
@@ -208,15 +201,15 @@ func manageDelMember(ws *websocket.Conn, m *Message) {
 		return
 	}
 	memberToBeDeleted := api.Member{
-		Id:        m.Text[strings.Index(m.Text, ": delete")+9:],
+		ID:        m.Text[strings.Index(m.Text, ": delete")+9:],
 		Name:      m.Text[strings.Index(m.Text, ": delete")+9:],
-		ChannelId: m.getChannelID(),
-		TeamId:    teamID,
+		ChannelID: m.getChannelID(),
+		TeamID:    teamID,
 	}
 
 	if err := delTeamMember(&memberToBeDeleted); err != nil {
 		log.Printf("slackutils: error invoking API Server to delete member %s in channel %s: %s",
-			memberToBeDeleted.Id, m.getChannelID(), err)
+			memberToBeDeleted.ID, m.getChannelID(), err)
 		_ = sendUnexpectedProblemMsj(ws, m.getChannelID())
 		return
 	}
@@ -248,7 +241,7 @@ func manageListMembers(ws *websocket.Conn, m *Message) {
 	b.WriteString("Members registered for the next Daily Sprint: ")
 
 	for i := 0; i < len(teamMembers[:]); i++ {
-		b.WriteString(teamMembers[i].Name + ", ")
+		b.WriteString(teamMembers[i].ID + ", ")
 	}
 
 	message := &Message{
@@ -287,9 +280,15 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 
 	channelsDailyMap.Lock()
 	d := channelsDailyMap.d[m.getChannelID()]
-	d.lastDaily = time.Now()
+	d.LastDaily = time.Now()
 	channelsDailyMap.d[m.getChannelID()] = d
-	defer channelsDailyMap.Unlock()
+	channelsDailyMap.Unlock()
+
+	if err := addDailyMeeting(&d, teamID); err != nil {
+		log.Printf("slackutils: error invoking API Server to store LastDaily time: %v", err)
+		_ = sendUnexpectedProblemMsj(ws, m.getChannelID())
+		return
+	}
 
 	var messageReceived Message
 
@@ -299,8 +298,9 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 			ID:      0,
 			Type:    "message",
 			Channel: m.getChannelID(),
-			Text:    "Hi " + teamMembers[i].Id + "! Are you ready?.",
+			Text:    "Hi " + teamMembers[i].ID + "! Are you ready?.",
 		}
+		log.Printf("DEBUG: memberID: %s, memberName: %s", teamMembers[i].ID, teamMembers[i].Name)
 		if err := message.send(ws); err != nil {
 			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
 		}
@@ -309,9 +309,9 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 		if channelsMap.p[m.getChannelID()] == nil {
 			channelsMap.p[m.getChannelID()] = map[string]chan Message{}
 		}
-		if channelsMap.p[m.getChannelID()][teamMembers[i].Id] == nil {
-			channelsMap.p[m.getChannelID()][teamMembers[i].Id] = make(chan Message)
-			defer channelsMap.finishWaitingMember(m.getChannelID(), teamMembers[i].Id)
+		if channelsMap.p[m.getChannelID()][teamMembers[i].ID] == nil {
+			channelsMap.p[m.getChannelID()][teamMembers[i].ID] = make(chan Message)
+			defer channelsMap.finishWaitingMember(m.getChannelID(), teamMembers[i].ID)
 		}
 		channelsMap.Unlock()
 
@@ -320,7 +320,7 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 			select {
 			case <-time.After(time.Second * time.Duration(timeout)):
 				memberAvailable = false
-			case messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].Id]:
+			case messageReceived = <-channelsMap.p[m.getChannelID()][teamMembers[i].ID]:
 				memberAvailable = true
 			}
 			if !memberAvailable || (messageReceived.isYes() || messageReceived.isNo()) {
@@ -335,7 +335,7 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 			continue
 		}
 
-		runDailyByMember(ws, m.getChannelID(), teamMembers[i].Id)
+		runDailyByMember(ws, m.getChannelID(), teamMembers[i].ID)
 	}
 
 	endDailyMeetingMessage := &Message{
@@ -577,17 +577,19 @@ func manageScheduleDaily(ws *websocket.Conn, m *Message) {
 
 func storeScheduledTime(channelID string, lastDaily, startTime, limitTime time.Time, doW []time.Weekday) error {
 
-	// TODO: invoke the API to store it in the DB
 	channelsDailyMap.Lock()
-	channelsDailyMap.d[channelID] = dailyStatusData{
-		lastDaily: time.Time{},
-		startTime: startTime,
-		limitTime: limitTime,
-		days:      doW,
+	defer channelsDailyMap.Unlock()
+	dailyToAdd := api.DailyMeeting{
+		ChannelID: channelID,
+		LastDaily: time.Time{},
+		StartTime: startTime,
+		LimitTime: limitTime,
+		Days:      doW,
 	}
 
-	channelsDailyMap.Unlock()
-	return nil
+	channelsDailyMap.d[channelID] = dailyToAdd
+
+	return addDailyMeeting(&dailyToAdd, teamID)
 }
 
 func manageInfoDaily(ws *websocket.Conn, m *Message) {
@@ -606,20 +608,20 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 		var b bytes.Buffer
 		b.WriteString("Daily Meeting scheduled on ")
 
-		for _, w := range i.days {
+		for _, w := range i.Days {
 			b.WriteString(w.String() + ", ")
 		}
 
-		if i.limitTime.IsZero() {
+		if i.LimitTime.IsZero() {
 			message.Text = fmt.Sprintf(b.String()[:len(b.String())-2]+" at %02d:%02d",
-				i.startTime.Hour(), i.startTime.Minute())
+				i.StartTime.Hour(), i.StartTime.Minute())
 		} else {
 			message.Text = fmt.Sprintf(b.String()[:len(b.String())-2]+" between %02d:%02d and %02d:%02d",
-				i.startTime.Hour(), i.startTime.Minute(),
-				i.limitTime.Hour(), i.limitTime.Minute())
+				i.StartTime.Hour(), i.StartTime.Minute(),
+				i.LimitTime.Hour(), i.LimitTime.Minute())
 		}
-		if !i.lastDaily.IsZero() {
-			message.Text += fmt.Sprintf("\nLast meeting done %2.2f hours ago", time.Since(i.lastDaily).Hours())
+		if !i.LastDaily.IsZero() {
+			message.Text += fmt.Sprintf("\nLast meeting done %2.2f hours ago", time.Since(i.LastDaily).Hours())
 		}
 	}
 

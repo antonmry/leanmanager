@@ -3,6 +3,7 @@
 ## Technical debt
 
 - [ ] Don't panic if API Server is down
+- [ ] Avoid unexpected message if channel isn't defined
 - [ ] move database access from global variable to interface
 - [ ] unit testing!!
 - [ ] Automatic deployment (Travis?)
@@ -10,6 +11,7 @@
 - [ ] [Avoid Go's default client](https://medium.com/@nate510/don-t-use-go-s-default-http-client-4804cb19f779#.tmgmfnr34)
 - [ ] Move manageStartDaily logic to the API Server 
 - [ ] if error receiving messange, we should reconnect!! 
+- [ ] Fix member.Name vs. member.ID
 - [x] Put in docker #7
 - [x] avoid sync/atomic
 - [x] refactor manageMessage, it's too big
@@ -23,7 +25,6 @@
 
 ### Daily meetings
 
-- [ ] schedule the daily meeting #3
 - [ ] show help commands #3 
 - [ ] validate responses (contain a Github PR or a Github Issue)
 - [ ] skip the daily by holidays
@@ -35,6 +36,7 @@
 - [ ] Add timezones to the bot
 - [ ] Limit time range for the daily to 12 hours
 - [ ] Better login, identify the admin
+- [x] schedule the daily meeting #3
 - [x] resume command #3
 - [x] timeouts: https://gobyexample.com/timeouts #3
 - [x] avoid @leanmanager prefix when possible! #2

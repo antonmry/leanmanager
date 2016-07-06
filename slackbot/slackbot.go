@@ -2,10 +2,15 @@
 package slackbot
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/antonmry/leanmanager/api"
 
 	"golang.org/x/net/websocket"
 )
@@ -30,7 +35,34 @@ func LaunchSlackbot(slackTokenArg, teamIDArg, apiserverHostArg string, apiserver
 
 	log.Println("slackbot: bot connected")
 
-	//TODO: invoke API server to fill channelsDailyMap
+	resp, err := http.Get(apiserverURL + "/dailymeetings/" + teamID)
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 200 {
+		log.Fatalf("slackbot: error invoking API Server to retrieve daily meetings"+
+			" for bot: %v", err)
+	}
+
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("slackbot: error parsing API Server response with "+
+			"daily meetings of the bot: %v", err)
+	}
+	var teamDailyMeetings []api.DailyMeeting
+	json.Unmarshal(buf, &teamDailyMeetings)
+
+	channelsDailyMap.Lock()
+	for _, t := range teamDailyMeetings {
+		// TODO: key should be a boolean, not ChannelID
+		channelsDailyMap.d[t.ChannelID] = api.DailyMeeting{
+			ChannelID: t.ChannelID,
+			LastDaily: t.LastDaily,
+			StartTime: t.StartTime,
+			LimitTime: t.LimitTime,
+			Days:      t.Days,
+		}
+	}
+	channelsDailyMap.Unlock()
 
 	// Scheduled tasks (daily launching)
 	t := time.NewTicker(60 * time.Second)
@@ -60,17 +92,17 @@ func launchScheduledTasks(ws *websocket.Conn) {
 	channelsDailyMap.Lock()
 	defer channelsDailyMap.Unlock()
 
-	for k, v := range channelsDailyMap.d {
+	for _, v := range channelsDailyMap.d {
 		t := time.Now()
 		// Firt, check there are than 12 hours since the last one
-		if !v.lastDaily.IsZero() && v.lastDaily.Sub(t).Hours() < 12 {
+		if !v.LastDaily.IsZero() && v.LastDaily.Sub(t).Hours() < 12 {
 			continue
 		}
 
 		// Then check if today is a daily meeting day
 		fmt.Printf("DEBUG: Today is: %s\n", t.Weekday())
 		found := false
-		for _, d := range v.days {
+		for _, d := range v.Days {
 			if d == t.Weekday() {
 				found = true
 			}
@@ -82,16 +114,16 @@ func launchScheduledTasks(ws *websocket.Conn) {
 
 		// Check if it's time to start the meeting
 		tReference := time.Date(0, 1, 1, t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
-		if v.startTime.Sub(tReference) > 0 {
-			fmt.Printf("DEBUG: time for the next one: %2.2f\n", v.startTime.Sub(tReference).Seconds())
+		if v.StartTime.Sub(tReference) > 0 {
+			fmt.Printf("DEBUG: time for the next one: %2.2f\n", v.StartTime.Sub(tReference).Seconds())
 			continue
 		}
 
 		// TODO: implement team availability check
 		teamAvailability := true
 
-		if !v.limitTime.IsZero() && v.limitTime.Sub(tReference) > 0 && !teamAvailability {
-			fmt.Printf("DEBUG: time for the next one: %2.2f\n when connected", v.limitTime.Sub(tReference).Seconds())
+		if !v.LimitTime.IsZero() && v.LimitTime.Sub(tReference) > 0 && !teamAvailability {
+			fmt.Printf("DEBUG: time for the next one: %2.2f\n when connected", v.LimitTime.Sub(tReference).Seconds())
 			continue
 		}
 		fmt.Println("DEBUG: start meeting")
@@ -99,7 +131,7 @@ func launchScheduledTasks(ws *websocket.Conn) {
 		m := Message{
 			ID:      0,
 			Type:    "message",
-			Channel: k,
+			Channel: v.ChannelID,
 			Text:    "",
 		}
 		go func(m Message) {
