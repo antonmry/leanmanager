@@ -15,7 +15,7 @@
 - [x] Put in docker #7
 - [x] avoid sync/atomic
 - [x] refactor manageMessage, it's too big
-- [x] @leanmanager: add without user panics
+- [x] @leanmanager: add without panics
 - [x] restructure the project
 - [x] const must be read as ENV variable or args, create BASH script to launch
 - [x] create the API Server as k8s does, it will be the heart of the project #1
@@ -27,6 +27,7 @@
 
 - [ ] show help commands #3 
 - [ ] validate responses (contain a Github PR or a Github Issue)
+- [ ] check availabilty of members before launch the Daily
 - [ ] skip the daily by holidays
 - [ ] add all members of the channel
 - [ ] Package it as an Slack App (ready to deal with OAuth?)
@@ -35,6 +36,7 @@
 - [ ] check if newMember is member of the channel when added 
 - [ ] Add timezones to the bot
 - [ ] Limit time range for the daily to 12 hours
+- [ ] Add a "Good morning" feature
 - [ ] Better login, identify the admin
 - [x] schedule the daily meeting #3
 - [x] resume command #3
