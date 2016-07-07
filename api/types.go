@@ -33,3 +33,11 @@ type DailyMeeting struct {
 	LimitTime time.Time      `json:"limitTime"`
 	Days      []time.Weekday `json:"days"`
 }
+
+// PredefinedDailyReply represents an automated reply to answers in the Daily Meeting following the exp criteria
+type PredefinedDailyReply struct {
+	ChannelID string `json:"channelId"`
+	Question  int    `json:"question"`
+	Reply     string `json:"reply"`
+	Exp       string `json:"regularExpression"`
+}
