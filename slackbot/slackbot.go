@@ -3,7 +3,6 @@ package slackbot
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -88,7 +87,6 @@ func LaunchSlackbot(slackTokenArg, teamIDArg, apiserverHostArg string, apiserver
 
 func launchScheduledTasks(ws *websocket.Conn) {
 
-	println("DEBUG: Periodic launcher started")
 	channelsDailyMap.Lock()
 	defer channelsDailyMap.Unlock()
 
@@ -100,7 +98,6 @@ func launchScheduledTasks(ws *websocket.Conn) {
 		}
 
 		// Then check if today is a daily meeting day
-		fmt.Printf("DEBUG: Today is: %s\n", t.Weekday())
 		found := false
 		for _, d := range v.Days {
 			if d == t.Weekday() {
@@ -115,18 +112,14 @@ func launchScheduledTasks(ws *websocket.Conn) {
 		// Check if it's time to start the meeting
 		tReference := time.Date(0, 1, 1, t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
 		if v.StartTime.Sub(tReference) > 0 {
-			fmt.Printf("DEBUG: time for the next one: %2.2f\n", v.StartTime.Sub(tReference).Seconds())
 			continue
 		}
 
-		// TODO: implement team availability check
 		teamAvailability := true
 
 		if !v.LimitTime.IsZero() && v.LimitTime.Sub(tReference) > 0 && !teamAvailability {
-			fmt.Printf("DEBUG: time for the next one: %2.2f\n when connected", v.LimitTime.Sub(tReference).Seconds())
 			continue
 		}
-		fmt.Println("DEBUG: start meeting")
 
 		m := Message{
 			ID:      0,
@@ -155,14 +148,16 @@ func manageMessage(m Message, botID string, ws *websocket.Conn) {
 		manageDelMember(ws, &m)
 	case m.isListMembersDailyMsj(botID):
 		manageListMembers(ws, &m)
-	case m.isStartDaily(botID):
+	case m.isStartDailyMsj(botID):
 		manageStartDaily(ws, &m)
 	case m.isResumeDailyMsj(botID):
 		manageResumeDaily(ws, &m)
-	case m.isInfoDaily(botID):
+	case m.isInfoDailyMsj(botID):
 		manageInfoDaily(ws, &m)
-	case m.isScheduleDaily(botID):
+	case m.isScheduleDailyMsj(botID):
 		manageScheduleDaily(ws, &m)
+	case m.isHelpMsj(botID):
+		manageHelp(ws, &m)
 	case m.isCommand(botID):
 		manageUnderstoodCommand(ws, &m)
 		log.Printf("slackbot: bot %s has received an understood message", botID)
