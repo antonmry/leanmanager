@@ -707,6 +707,118 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 	channelsDailyMap.Unlock()
 }
 
+func manageValidationDaily(ws *websocket.Conn, m *Message) {
+
+	channelsMap.Lock()
+	if channelsMap.p[m.getChannelID()] == nil {
+		channelsMap.p[m.getChannelID()] = map[string]chan Message{}
+	}
+	if channelsMap.p[m.getChannelID()]["<@"+m.User+">"] == nil {
+		channelsMap.p[m.getChannelID()]["<@"+m.User+">"] = make(chan Message)
+		defer channelsMap.finishWaitingMember(m.getChannelID(), "<@"+m.User+">")
+	}
+	channelsMap.Unlock()
+
+	message := &Message{
+		ID:      0,
+		Type:    "message",
+		User:    "",
+		Channel: m.getChannelID(),
+		Text:    "To what question I should reply? First one, second one or last one?",
+	}
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	var messageReceived Message
+	var question int
+
+	for {
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		var err error
+		if question, err = messageReceived.getValidAnswer(); err == nil {
+			break
+		}
+
+		message.Text = ":scream: Type something like `first one`, `second one`, `last one` or `cancel`."
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+
+	}
+
+	message.Text = "What is the regular expression which matches the answer of the team member to that question?"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	var exp string
+
+	for {
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		var err error
+		if exp, err = messageReceived.getValidRegularExpression(); err == nil {
+			break
+		}
+
+		message.Text = ":scream: I don't understand that regular expression. Who does? Try again! \n" +
+			"Type something like `It's /(?i)hello/` to match an answer like Hello, HELLO or hello world, " +
+			"and don't forget write it between / and / but don't start with / \n" +
+			"You may find some help in this website for help: https://regex101.com/"
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+	}
+
+	// TODO: we are going to need another question, it should the REGEX match the response?
+	message.Text = "What do I should reply to the question?"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+	if messageReceived.isCancel() {
+		message.Text = ":ok_hand:"
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+		return
+	}
+
+	reply := messageReceived.Text
+
+	replyToAdd := api.PredefinedDailyReply{
+		ChannelID: m.getChannelID(),
+		Question:  question,
+		Reply:     reply,
+		Exp:       exp,
+	}
+
+	// TODO: Store in API Server
+	log.Printf("DEBUG: question %d, reply %s and expression: %s\n",
+		replyToAdd.Question, replyToAdd.Reply, replyToAdd.Exp)
+
+	message.Text = "Yeah! I will do it as you've requested :smiling_imp:"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending msj to channel %s: %s\n", m.getChannelID(), err)
+	}
+}
 func isExpectedMessage(m *Message) bool {
 	switch {
 	case m.Type != "message":
@@ -758,6 +870,7 @@ func sendHelpMsj(ws *websocket.Conn, channelID string) error {
 			"`@leanmanager: daily info` to know when it's scheduled and the last time it was done\n" +
 			"`@leanmanager: daily schedule` to setup the periodicity of the Daily Meeting\n" +
 			"`@leanmanager: daily resume` to do the Daily report if you miss the Daily Meeting\n" +
+			"`@leanmanager: daily validation` to add predefined bot replies to the Daily answers\n" +
 			"If I ask something, just reply, I will do my best to understand you :grin:",
 	}
 
@@ -895,6 +1008,14 @@ func (m Message) isInfoDailyMsj(botID string) bool {
 	return false
 }
 
+func (m Message) isValidationDailyMsj(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily validation") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily validation")) {
+		return true
+	}
+	return false
+}
+
 func (m Message) isScheduleDailyMsj(botID string) bool {
 	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily schedule") ||
 		strings.HasPrefix(m.Text, "leanmanager: daily schedule")) {
@@ -994,6 +1115,43 @@ func (m Message) getValidUserIDs() []string {
 
 	re := regexp.MustCompile("(?i)[<][@][A-Za-z0-9]*[>]")
 	return re.FindAllString(m.Text, -1)
+}
+
+func (m Message) getValidAnswer() (int, error) {
+	if m.Type != "message" {
+		return -1, fmt.Errorf("no type message")
+	}
+
+	re := regexp.MustCompile("(?i)([f][i][r][s][t]|[s][e][c][o][n][d]|[l][a][s][t])")
+	switch strings.ToLower(re.FindString(m.Text)) {
+	case "first":
+		return 0, nil
+	case "second":
+		return 1, nil
+	case "last":
+		return 2, nil
+	}
+	return -1, fmt.Errorf("question not found")
+}
+
+func (m Message) getValidRegularExpression() (string, error) {
+	if m.Type != "message" {
+		return "", fmt.Errorf("no type message")
+	}
+
+	re := regexp.MustCompile("([/].*[/])")
+	exp := re.FindString(m.Text)
+
+	if exp == "" {
+		return "", fmt.Errorf("no regular expression ")
+	}
+
+	_, err := regexp.Compile(exp)
+
+	if len(exp) > 2 {
+		return exp[1 : len(exp)-1], err
+	}
+	return "", err
 }
 
 // Message methods

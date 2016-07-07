@@ -38,6 +38,7 @@
 - [ ] Limit time range for the daily to 12 hours
 - [ ] Add a "Good morning" feature
 - [ ] Better login, identify the admin
+- [ ] Scrapper daily jokes in reddit ;-)
 - [x] schedule the daily meeting #3
 - [x] resume command #3
 - [x] timeouts: https://gobyexample.com/timeouts #3
