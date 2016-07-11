@@ -26,8 +26,19 @@ func InitDB(path string) error {
 	if err != nil {
 		return err
 	}
-	return db.Update(func(tx *bolt.Tx) error {
+
+	err = db.Update(func(tx *bolt.Tx) error {
 		if _, err := tx.CreateBucketIfNotExists([]byte("dailymeetings")); err != nil {
+			return fmt.Errorf("dbutils: create bucket: %s", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return db.Update(func(tx *bolt.Tx) error {
+		if _, err := tx.CreateBucketIfNotExists([]byte("predefinedreplies")); err != nil {
 			return fmt.Errorf("dbutils: create bucket: %s", err)
 		}
 		return nil
@@ -169,6 +180,52 @@ func GetDailyMeetingsByBot(botID string, teamDailyMeetings *[]api.DailyMeeting) 
 			dec := gob.NewDecoder(&buf)
 			dec.Decode(&daily)
 			*teamDailyMeetings = append(*teamDailyMeetings, daily)
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+// StorePredefinedReply saves a predefined reply used to reply to Daily Meeting answers
+func StorePredefinedReply(reply api.PredefinedDailyReply) error {
+	// TODO: persist by TeamID or BotID
+	return db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("predefinedreplies"))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket predefinedreplies not created")
+		}
+
+		var buf bytes.Buffer
+		enc := gob.NewEncoder(&buf)
+		enc.Encode(reply)
+
+		// Persist bytes to daily meetings bucket.
+		return b.Put([]byte(reply.ChannelID), buf.Bytes())
+	})
+}
+
+// GetPredefinedReplies returns all replies associated to answers in a Daily Meeting
+func GetPredefinedReplies(channelID string, replies *[]api.PredefinedDailyReply) error {
+
+	// TODO: we are not filtering by channelID!
+	err := db.View(func(tx *bolt.Tx) error {
+		// Assume bucket exists and has keys
+		b := tx.Bucket([]byte("predefinedreplies"))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket predefinedreplies not created")
+		}
+
+		d := b.Cursor()
+		var reply api.PredefinedDailyReply
+
+		for k, v := d.First(); k != nil; k, v = d.Next() {
+
+			buf := *bytes.NewBuffer(v)
+			dec := gob.NewDecoder(&buf)
+			dec.Decode(&reply)
+			*replies = append(*replies, reply)
 		}
 
 		return nil
