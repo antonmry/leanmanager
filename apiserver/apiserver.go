@@ -42,6 +42,29 @@ func (dao DAO) register(container *restful.Container) {
 
 	container.Add(dailyWs)
 
+	replyWs := new(restful.WebService)
+
+	replyWs.
+		Path("/replies").
+		Doc("Predefined replies to Daily Meetings questions").
+		Consumes(restful.MIME_JSON, restful.MIME_XML).
+		Produces(restful.MIME_JSON, restful.MIME_XML)
+
+	replyWs.Route(replyWs.POST("").To(dao.storePredefinedReply).
+		// docs
+		Doc("create a predefined reply to a Daily Meeting question").
+		Operation("createPredefinedReply").
+		Reads(api.PredefinedDailyReply{}))
+
+	replyWs.Route(replyWs.GET("/{channel-id}/").To(dao.getPredefinedRepliesByChannel).
+		// docs
+		Doc("get all predefined replies to Daily Meetings answers").
+		Operation("getPredefinedReplies").
+		Param(dailyWs.PathParameter("channel-id", "ID of the Channel").DataType("string")).
+		Writes(api.PredefinedDailyReply{}))
+
+	container.Add(replyWs)
+
 	channelWs := new(restful.WebService)
 
 	channelWs.
@@ -207,6 +230,39 @@ func (dao *DAO) removeMember(request *restful.Request, response *restful.Respons
 		return
 	}
 	log.Printf("apiserver: member %s deleted", memberID)
+}
+
+func (dao *DAO) storePredefinedReply(request *restful.Request, response *restful.Response) {
+	r := new(api.PredefinedDailyReply)
+	err := request.ReadEntity(r)
+	if err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+	}
+	err = storage.StorePredefinedReply(*r)
+	if err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+
+	}
+	response.WriteHeaderAndEntity(http.StatusCreated, r)
+	log.Printf("apiserver: Predefined Daily Reply created at %s", r.ChannelID)
+}
+
+func (dao DAO) getPredefinedRepliesByChannel(request *restful.Request, response *restful.Response) {
+
+	channelID := request.PathParameter("channel-id")
+	var predefinedReplies []api.PredefinedDailyReply
+	if err := storage.GetPredefinedReplies(channelID, &predefinedReplies); err != nil {
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusNotFound, "404: Replies could not be found.")
+		return
+
+	}
+	response.WriteEntity(predefinedReplies)
+	log.Printf("apiserver: %d predefined replies found by bot %s", len(predefinedReplies), channelID)
 }
 
 // LaunchAPIServer is invoked by CLI to initiate the API Server

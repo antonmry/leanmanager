@@ -63,6 +63,42 @@ func listDailyMeetings(botID string) (teamDailyMeetings []api.DailyMeeting, err 
 	return teamDailyMeetings, nil
 }
 
+func addPredefinedReply(reply *api.PredefinedDailyReply) error {
+	var buf bytes.Buffer
+	err := json.NewEncoder(&buf).Encode(&reply)
+	resp, err := http.Post(apiserverURL+"/replies",
+		"application/json", &buf)
+
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 201 {
+		return fmt.Errorf("apiutils: error invoking API Server to store new predefined reply for channel %s: %v",
+			reply.ChannelID, err)
+	}
+
+	return nil
+}
+
+func listPredefinedReplies(botID string) (predefinedReplies []api.PredefinedDailyReply, err error) {
+	resp, err := http.Get(apiserverURL + "/replies/")
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 200 {
+		return nil, fmt.Errorf("slackbot: error invoking API Server to retrieve predefined replies"+
+			" of bot: %v", err)
+	}
+
+	buf, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("slackbot: error parsing API Server response with "+
+			"daily meetings of bot: %v", err)
+	}
+
+	json.Unmarshal(buf, &predefinedReplies)
+
+	return predefinedReplies, nil
+}
+
 func addTeamMember(member *api.Member) error {
 	var buf bytes.Buffer
 	err := json.NewEncoder(&buf).Encode(&member)

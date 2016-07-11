@@ -40,4 +40,5 @@ type PredefinedDailyReply struct {
 	Question  int    `json:"question"`
 	Reply     string `json:"reply"`
 	Exp       string `json:"regularExpression"`
+	Match     bool   `json:"match"`
 }

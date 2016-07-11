@@ -456,6 +456,7 @@ func runDailyByMember(ws *websocket.Conn, channelID, memberID string) {
 		return
 	}
 
+	// TODO: check if there is a predefined reply for this message
 	_ = <-channelsMap.p[channelID][memberID]
 	dailyMeetingMessage.Text = memberID + ", what will you do today?"
 	if err := dailyMeetingMessage.send(ws); err != nil {
@@ -786,7 +787,36 @@ func manageValidationDaily(ws *websocket.Conn, m *Message) {
 		}
 	}
 
-	// TODO: we are going to need another question, it should the REGEX match the response?
+	var match bool
+	for {
+		message.Text = "Should I reply when the member's answer match the regular expression?"
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+
+		messageReceived = <-channelsMap.p[m.getChannelID()]["<@"+m.User+">"]
+		if messageReceived.isCancel() {
+			message.Text = ":ok_hand:"
+			if err := message.send(ws); err != nil {
+				log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+			}
+			return
+		}
+
+		if messageReceived.isYes() || messageReceived.isNo() {
+			match = messageReceived.isYes()
+			break
+		}
+
+		message.Text = ":scream: Type something like `yes`, `no` or `cancel`\n" +
+			"If you type `no`, I will reply only if regular expression *doesn't match* the answer\n" +
+			"If you type `yes`, only if regular expression *match* the answer\n"
+		if err := message.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+		}
+
+	}
+
 	message.Text = "What do I should reply to the question?"
 	if err := message.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
@@ -808,11 +838,17 @@ func manageValidationDaily(ws *websocket.Conn, m *Message) {
 		Question:  question,
 		Reply:     reply,
 		Exp:       exp,
+		Match:     match,
 	}
 
-	// TODO: Store in API Server
 	log.Printf("DEBUG: question %d, reply %s and expression: %s\n",
 		replyToAdd.Question, replyToAdd.Reply, replyToAdd.Exp)
+
+	if err := addPredefinedReply(&replyToAdd); err != nil {
+		log.Printf("slackutils: error storing predefined reply from channel %s: %s\n", m.getChannelID(), err)
+		sendUnexpectedProblemMsj(ws, m.getChannelID())
+		return
+	}
 
 	message.Text = "Yeah! I will do it as you've requested :smiling_imp:"
 	if err := message.send(ws); err != nil {
