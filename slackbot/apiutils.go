@@ -43,6 +43,7 @@ func addDailyMeeting(daily *api.DailyMeeting, botID string) error {
 	return nil
 }
 
+// FIXME: it should be a pointer, not copy the slice!
 func listDailyMeetings(botID string) (teamDailyMeetings []api.DailyMeeting, err error) {
 	resp, err := http.Get(apiserverURL + "/dailymeetings/")
 	defer resp.Body.Close()
@@ -79,8 +80,8 @@ func addPredefinedReply(reply *api.PredefinedDailyReply) error {
 	return nil
 }
 
-func listPredefinedReplies(botID string) (predefinedReplies []api.PredefinedDailyReply, err error) {
-	resp, err := http.Get(apiserverURL + "/replies/")
+func listPredefinedReplies(channelID string) (predefinedReplies *[]api.PredefinedDailyReply, err error) {
+	resp, err := http.Get(apiserverURL + "/replies/" + channelID)
 	defer resp.Body.Close()
 
 	if err != nil || resp.StatusCode != 200 {

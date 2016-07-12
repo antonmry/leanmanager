@@ -435,6 +435,7 @@ func manageResumeDaily(ws *websocket.Conn, m *Message) {
 }
 
 func runDailyByMember(ws *websocket.Conn, channelID, memberID string) {
+	// Initialization to wait for user responses
 	channelsMap.Lock()
 	if channelsMap.p[channelID] == nil {
 		channelsMap.p[channelID] = map[string]chan Message{}
@@ -445,6 +446,7 @@ func runDailyByMember(ws *websocket.Conn, channelID, memberID string) {
 	}
 	channelsMap.Unlock()
 
+	// Start the daily meeting
 	dailyMeetingMessage := &Message{
 		ID:      0,
 		Type:    "message",
@@ -456,22 +458,45 @@ func runDailyByMember(ws *websocket.Conn, channelID, memberID string) {
 		return
 	}
 
-	// TODO: check if there is a predefined reply for this message
-	_ = <-channelsMap.p[channelID][memberID]
+	m := <-channelsMap.p[channelID][memberID]
+
+	if r := m.getPredefinedReply(0); r != "" {
+		dailyMeetingMessage.Text = r
+		if err := dailyMeetingMessage.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+			return
+		}
+	}
+
 	dailyMeetingMessage.Text = memberID + ", what will you do today?"
 	if err := dailyMeetingMessage.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
 		return
 	}
 
-	_ = <-channelsMap.p[channelID][memberID]
+	m = <-channelsMap.p[channelID][memberID]
+
+	if r := m.getPredefinedReply(1); r != "" {
+		dailyMeetingMessage.Text = r
+		if err := dailyMeetingMessage.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+			return
+		}
+	}
 	dailyMeetingMessage.Text = memberID + ", are there any impediments in your way?"
 	if err := dailyMeetingMessage.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
 		return
 	}
 
-	_ = <-channelsMap.p[channelID][memberID]
+	m = <-channelsMap.p[channelID][memberID]
+	if r := m.getPredefinedReply(2); r != "" {
+		dailyMeetingMessage.Text = r
+		if err := dailyMeetingMessage.send(ws); err != nil {
+			log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
+			return
+		}
+	}
 	dailyMeetingMessage.Text = "Thanks " + memberID
 	if err := dailyMeetingMessage.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", channelID, err)
@@ -708,7 +733,7 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 	channelsDailyMap.Unlock()
 }
 
-func manageValidationDaily(ws *websocket.Conn, m *Message) {
+func manageAddReplyDaily(ws *websocket.Conn, m *Message) {
 
 	channelsMap.Lock()
 	if channelsMap.p[m.getChannelID()] == nil {
@@ -841,9 +866,6 @@ func manageValidationDaily(ws *websocket.Conn, m *Message) {
 		Match:     match,
 	}
 
-	log.Printf("DEBUG: question %d, reply %s and expression: %s\n",
-		replyToAdd.Question, replyToAdd.Reply, replyToAdd.Exp)
-
 	if err := addPredefinedReply(&replyToAdd); err != nil {
 		log.Printf("slackutils: error storing predefined reply from channel %s: %s\n", m.getChannelID(), err)
 		sendUnexpectedProblemMsj(ws, m.getChannelID())
@@ -855,6 +877,38 @@ func manageValidationDaily(ws *websocket.Conn, m *Message) {
 		log.Printf("slackutils: error sending msj to channel %s: %s\n", m.getChannelID(), err)
 	}
 }
+
+func manageDeleteReplyDaily(ws *websocket.Conn, m *Message) {
+
+	channelsMap.Lock()
+	if channelsMap.p[m.getChannelID()] == nil {
+		channelsMap.p[m.getChannelID()] = map[string]chan Message{}
+	}
+	if channelsMap.p[m.getChannelID()]["<@"+m.User+">"] == nil {
+		channelsMap.p[m.getChannelID()]["<@"+m.User+">"] = make(chan Message)
+		defer channelsMap.finishWaitingMember(m.getChannelID(), "<@"+m.User+">")
+	}
+	channelsMap.Unlock()
+
+	message := &Message{
+		ID:      0,
+		Type:    "message",
+		User:    "",
+		Channel: m.getChannelID(),
+		Text:    "Who isn't going to participate more in the Daily Meeting?",
+	}
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
+	}
+
+	// TODO: delete reply
+
+	message.Text = "Predefined reply deleted"
+	if err := message.send(ws); err != nil {
+		log.Printf("slackutils: error sending msj to channel %s: %s\n", m.getChannelID(), err)
+	}
+}
+
 func isExpectedMessage(m *Message) bool {
 	switch {
 	case m.Type != "message":
@@ -883,7 +937,7 @@ func sendHelloMsj(ws *websocket.Conn, channelID string) error {
 		Type:    "message",
 		Channel: channelID,
 		Text: "Hello team! I'm here to help you with your daily meetings. To add members " +
-			"to the daily meeting type `@leanmanager: daily add`, to setup the hour of the " +
+			"to the daily meeting type `@leanmanager: daily add member`, to setup the hour of the " +
 			"daily meeting, type `@leanmanager: daily schedule`.\n" +
 			"If you need help, just type `@leanmanager: help` :sos:",
 	}
@@ -899,14 +953,15 @@ func sendHelpMsj(ws *websocket.Conn, channelID string) error {
 		Channel: channelID,
 		Text: "Even if I'm a bit surly, work with me it's quite easy :sunglasses:\n" +
 			"Just type the order, and I will obey. Those are the orders available:\n" +
-			"`@leanmanager: daily add` to add new members in the Daily Meeting\n" +
-			"`@leanmanager: daily delete` to delete members from the Daily Meeting\n" +
-			"`@leanmanager: daily list` to obtain a list of members participating in the Daily\n" +
+			"`@leanmanager: daily add member` to add new members in the Daily Meeting\n" +
+			"`@leanmanager: daily delete member` to delete members from the Daily Meeting\n" +
+			"`@leanmanager: daily list members` to obtain a list of members participating in the Daily\n" +
 			"`@leanmanager: daily start` to start the daily in any moment or to repeat it\n" +
 			"`@leanmanager: daily info` to know when it's scheduled and the last time it was done\n" +
 			"`@leanmanager: daily schedule` to setup the periodicity of the Daily Meeting\n" +
 			"`@leanmanager: daily resume` to do the Daily report if you miss the Daily Meeting\n" +
-			"`@leanmanager: daily validation` to add predefined bot replies to the Daily answers\n" +
+			"`@leanmanager: daily add reply` to add predefined bot replies to the Daily answers\n" +
+			"`@leanmanager: daily delete reply` to delete predefined bot replies to the Daily answers\n" +
 			"If I ask something, just reply, I will do my best to understand you :grin:",
 	}
 
@@ -938,7 +993,7 @@ func sendNotMembersRegisteredMsj(ws *websocket.Conn, channelID string) error {
 		ID:      0,
 		Type:    "message",
 		Channel: channelID,
-		Text:    "There are no members registered yet. Type `@leanmanager: daily add` to add the first one",
+		Text:    "There are no members registered yet. Type `@leanmanager: daily add member` to add the first one",
 	}
 	return m.send(ws)
 }
@@ -1004,8 +1059,8 @@ func (m Message) isInitialMsj(botID string) bool {
 }
 
 func (m Message) isAddMemberDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily add") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily add")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily add member") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily add member")) {
 		return true
 	}
 
@@ -1013,8 +1068,8 @@ func (m Message) isAddMemberDailyMsj(botID string) bool {
 }
 
 func (m Message) isDeleteMemberDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily delete") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily delete")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily delete member") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily delete member")) {
 		return true
 	}
 	return false
@@ -1044,9 +1099,17 @@ func (m Message) isInfoDailyMsj(botID string) bool {
 	return false
 }
 
-func (m Message) isValidationDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily validation") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily validation")) {
+func (m Message) isAddReplyDailyMsj(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily add reply") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily add reply")) {
+		return true
+	}
+	return false
+}
+
+func (m Message) isDeleteReplyDailyMsj(botID string) bool {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily delete reply") ||
+		strings.HasPrefix(m.Text, "leanmanager: daily delete reply")) {
 		return true
 	}
 	return false
@@ -1151,6 +1214,40 @@ func (m Message) getValidUserIDs() []string {
 
 	re := regexp.MustCompile("(?i)[<][@][A-Za-z0-9]*[>]")
 	return re.FindAllString(m.Text, -1)
+}
+
+func (m Message) getPredefinedReply(q int) string {
+	if m.Type != "message" {
+		return ""
+	}
+
+	replies, err := listPredefinedReplies(m.getChannelID())
+	if err != nil {
+		log.Printf("slackutils: error accessing predefined replies: %v\n", err)
+		return ""
+	}
+
+	for i := 0; i < len(*replies); i++ {
+
+		if (*replies)[i].ChannelID != m.getChannelID() || (*replies)[i].Question != q {
+			continue
+		}
+
+		re, err := regexp.Compile((*replies)[i].Exp)
+		if err != nil {
+			log.Printf("slackutils: there is a wrong regex in the predefined replies: %v\n", err)
+			continue
+		}
+		exp := re.FindString(m.Text)
+		if exp == "" && (*replies)[i].Match == true {
+			return (*replies)[i].Reply
+		}
+		if exp != "" && (*replies)[i].Match == false {
+			return (*replies)[i].Reply
+		}
+	}
+
+	return ""
 }
 
 func (m Message) getValidAnswer() (int, error) {
