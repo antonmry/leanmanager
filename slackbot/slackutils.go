@@ -880,32 +880,21 @@ func manageAddReplyDaily(ws *websocket.Conn, m *Message) {
 
 func manageDeleteReplyDaily(ws *websocket.Conn, m *Message) {
 
-	channelsMap.Lock()
-	if channelsMap.p[m.getChannelID()] == nil {
-		channelsMap.p[m.getChannelID()] = map[string]chan Message{}
+	if err := delPredefinedReplies(m.getChannelID()); err != nil {
+		log.Printf("slackutils: error deleting predefined replies from channel %s: %s\n", m.getChannelID(), err)
+		sendUnexpectedProblemMsj(ws, m.getChannelID())
+		return
 	}
-	if channelsMap.p[m.getChannelID()]["<@"+m.User+">"] == nil {
-		channelsMap.p[m.getChannelID()]["<@"+m.User+">"] = make(chan Message)
-		defer channelsMap.finishWaitingMember(m.getChannelID(), "<@"+m.User+">")
-	}
-	channelsMap.Unlock()
 
 	message := &Message{
 		ID:      0,
 		Type:    "message",
 		User:    "",
 		Channel: m.getChannelID(),
-		Text:    "Who isn't going to participate more in the Daily Meeting?",
+		Text:    "Predefined replies deleted in this channel :+1:",
 	}
 	if err := message.send(ws); err != nil {
 		log.Printf("slackutils: error sending message to channel %s: %s\n", m.getChannelID(), err)
-	}
-
-	// TODO: delete reply
-
-	message.Text = "Predefined reply deleted"
-	if err := message.send(ws); err != nil {
-		log.Printf("slackutils: error sending msj to channel %s: %s\n", m.getChannelID(), err)
 	}
 }
 
@@ -1227,9 +1216,15 @@ func (m Message) getPredefinedReply(q int) string {
 		return ""
 	}
 
+	if replies == nil {
+		log.Printf("DEBUG: nil")
+		return ""
+	}
+
 	for i := 0; i < len(*replies); i++ {
 
 		if (*replies)[i].ChannelID != m.getChannelID() || (*replies)[i].Question != q {
+			log.Printf("DEBUG: different channel ID or question")
 			continue
 		}
 
@@ -1239,12 +1234,13 @@ func (m Message) getPredefinedReply(q int) string {
 			continue
 		}
 		exp := re.FindString(m.Text)
-		if exp == "" && (*replies)[i].Match == true {
+		if exp == "" && (*replies)[i].Match == false {
 			return (*replies)[i].Reply
 		}
-		if exp != "" && (*replies)[i].Match == false {
+		if exp != "" && (*replies)[i].Match == true {
 			return (*replies)[i].Reply
 		}
+		log.Printf("DEBUG: no hay match!")
 	}
 
 	return ""
