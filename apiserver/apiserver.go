@@ -58,10 +58,16 @@ func (dao DAO) register(container *restful.Container) {
 
 	replyWs.Route(replyWs.GET("/{channel-id}/").To(dao.getPredefinedRepliesByChannel).
 		// docs
-		Doc("get all predefined replies to Daily Meetings answers").
+		Doc("get all channel's predefined replies to Daily Meetings answers").
 		Operation("getPredefinedReplies").
 		Param(dailyWs.PathParameter("channel-id", "ID of the Channel").DataType("string")).
 		Writes(api.PredefinedDailyReply{}))
+
+	replyWs.Route(replyWs.DELETE("/{channel-id}/").To(dao.deletePredefinedRepliesByChannel).
+		// docs
+		Doc("delete all channel's predefined replies to Daily Meetings answers").
+		Operation("deletePredefinedReplies").
+		Param(dailyWs.PathParameter("channel-id", "ID of the Channel").DataType("string")))
 
 	container.Add(replyWs)
 
@@ -263,6 +269,19 @@ func (dao DAO) getPredefinedRepliesByChannel(request *restful.Request, response 
 	}
 	response.WriteEntity(predefinedReplies)
 	log.Printf("apiserver: %d predefined replies found by bot %s", len(predefinedReplies), channelID)
+}
+
+func (dao DAO) deletePredefinedRepliesByChannel(request *restful.Request, response *restful.Response) {
+
+	channelID := request.PathParameter("channel-id")
+	err := storage.DeletePredefinedRepliesByChannel(channelID)
+	if err != nil {
+		log.Printf("apiserver: error deleting predefined replies on channel %s: %v", channelID, err)
+		response.AddHeader("Content-Type", "text/plain")
+		response.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+	}
+	log.Printf("apiserver: predefined replies on channel %s deleted", channelID)
 }
 
 // LaunchAPIServer is invoked by CLI to initiate the API Server

@@ -209,7 +209,6 @@ func StorePredefinedReply(reply api.PredefinedDailyReply) error {
 // GetPredefinedReplies returns all replies associated to answers in a Daily Meeting
 func GetPredefinedReplies(channelID string, replies *[]api.PredefinedDailyReply) error {
 
-	// TODO: we are not filtering by channelID!
 	err := db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte("predefinedreplies"))
@@ -225,7 +224,39 @@ func GetPredefinedReplies(channelID string, replies *[]api.PredefinedDailyReply)
 			buf := *bytes.NewBuffer(v)
 			dec := gob.NewDecoder(&buf)
 			dec.Decode(&reply)
-			*replies = append(*replies, reply)
+			if reply.ChannelID == channelID {
+				*replies = append(*replies, reply)
+			}
+		}
+
+		return nil
+	})
+
+	return err
+}
+
+// DeletePredefinedRepliesByChannel deletes all replies associated to answers in a Daily Meeting channel
+func DeletePredefinedRepliesByChannel(channelID string) error {
+	err := db.Update(func(tx *bolt.Tx) error {
+		// Assume bucket exists and has keys
+		b := tx.Bucket([]byte("predefinedreplies"))
+		if b == nil {
+			return fmt.Errorf("dbutils: bucket predefinedreplies not created")
+		}
+
+		d := b.Cursor()
+		var reply api.PredefinedDailyReply
+
+		for k, v := d.First(); k != nil; k, v = d.Next() {
+
+			buf := *bytes.NewBuffer(v)
+			dec := gob.NewDecoder(&buf)
+			dec.Decode(&reply)
+			if reply.ChannelID == channelID {
+				if err := b.Delete(k); err != nil {
+					return err
+				}
+			}
 		}
 
 		return nil

@@ -159,7 +159,7 @@ func manageMessage(m Message, botID string, ws *websocket.Conn) {
 	case m.isAddReplyDailyMsj(botID):
 		manageAddReplyDaily(ws, &m)
 	case m.isDeleteReplyDailyMsj(botID):
-		//TODO: manageDeleteReplyDaily(ws, &m)
+		manageDeleteReplyDaily(ws, &m)
 	case m.isHelpMsj(botID):
 		manageHelp(ws, &m)
 	case m.isCommand(botID):

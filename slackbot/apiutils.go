@@ -43,7 +43,7 @@ func addDailyMeeting(daily *api.DailyMeeting, botID string) error {
 	return nil
 }
 
-// FIXME: it should be a pointer, not copy the slice!
+// FIXME: does it should be a pointer instead of a slice?
 func listDailyMeetings(botID string) (teamDailyMeetings []api.DailyMeeting, err error) {
 	resp, err := http.Get(apiserverURL + "/dailymeetings/")
 	defer resp.Body.Close()
@@ -98,6 +98,22 @@ func listPredefinedReplies(channelID string) (predefinedReplies *[]api.Predefine
 	json.Unmarshal(buf, &predefinedReplies)
 
 	return predefinedReplies, nil
+}
+
+func delPredefinedReplies(channelID string) (err error) {
+	clientAPI := &http.Client{}
+
+	delRepliesReq, _ := http.NewRequest("DELETE", apiserverURL+"/replies/"+channelID, nil)
+
+	resp, err := clientAPI.Do(delRepliesReq)
+	defer resp.Body.Close()
+
+	if err != nil || resp.StatusCode != 200 {
+		return fmt.Errorf("apiutils: error invoking API Server to delete replies in channel %s: %v",
+			channelID, err)
+	}
+
+	return nil
 }
 
 func addTeamMember(member *api.Member) error {

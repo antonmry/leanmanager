@@ -25,7 +25,6 @@
 
 ### Daily meetings
 
-- [ ] validate responses (contain a Github PR or a Github Issue) #3
 - [ ] check availabilty of members before launch the Daily
 - [ ] skip the daily by holidays
 - [ ] add all members of the channel
@@ -37,7 +36,8 @@
 - [ ] Limit time range for the daily to 12 hours
 - [ ] Add a "Good morning" feature
 - [ ] Better login, identify the admin
-- [ ] Scrapper daily jokes from reddit ;-)
+- [ ] Scrapper daily jokes from reddit, dilbert and so on ;-)
+- [x] validate responses (contain a Github PR or a Github Issue) #3
 - [x] show help commands #3
 - [x] schedule the daily meeting #3
 - [x] resume command #3
