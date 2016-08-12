@@ -130,12 +130,14 @@ func (dao *DAO) createDailyMeeting(request *restful.Request, response *restful.R
 	d := new(api.DailyMeeting)
 	err := request.ReadEntity(d)
 	if err != nil {
+		log.Printf("apiserver: error createing daily meeting for channel %s: %v", d.ChannelID, err)
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
 	}
 	err = storage.StoreDailyMeeting(*d)
 	if err != nil {
+		log.Printf("apiserver: error createing daily meeting for channel %s: %v", d.ChannelID, err)
 		response.AddHeader("Content-Type", "text/plain")
 		response.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
@@ -295,10 +297,11 @@ func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 	if err != nil {
 		log.Fatalf("Error opening the database %s: %s", pathDbArg+"/"+dbNameArg+".db", err)
 	}
+	log.Printf("apiserver: database %s opened", pathDbArg+"/"+dbNameArg+".db")
 	defer storage.CloseDB()
 
 	// Only for debug:
-	restful.TraceLogger(log.New(os.Stdout, "[restful] ", log.LstdFlags|log.Lshortfile))
+	restful.TraceLogger(log.New(os.Stdout, "apiserver: ", log.LstdFlags|log.Lshortfile))
 
 	wsContainer := restful.NewContainer()
 	dao := DAO{}
@@ -314,7 +317,7 @@ func LaunchAPIServer(pathDbArg, dbNameArg, hostArg string, portArg int) {
 	}
 	swagger.RegisterSwaggerService(config, wsContainer)
 
-	log.Printf("start listening on %s:%d", hostArg, portArg)
+	log.Printf("apiserver: start listening on %s:%d", hostArg, portArg)
 	server := &http.Server{Addr: hostArg + ":" + portStr, Handler: wsContainer}
 	log.Fatal(server.ListenAndServe())
 }

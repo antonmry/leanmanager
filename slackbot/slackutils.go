@@ -358,6 +358,7 @@ func manageStartDaily(ws *websocket.Conn, m *Message) {
 	channelsDailyMap.Lock()
 	d := channelsDailyMap.d[m.getChannelID()]
 	d.LastDaily = time.Now()
+	d.ChannelID = m.getChannelID()
 	channelsDailyMap.d[m.getChannelID()] = d
 	channelsDailyMap.Unlock()
 
