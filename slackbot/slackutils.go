@@ -701,7 +701,7 @@ func manageInfoDaily(ws *websocket.Conn, m *Message) {
 		Type:    "message",
 		User:    "",
 		Channel: m.getChannelID(),
-		Text: "There is no Daily Meeting scheduled yet, type `@leanmanager: daily schedule` " +
+		Text: "There is no Daily Meeting scheduled yet, type `@leanmanager daily schedule` " +
 			"to schedule your next Daily Meeting",
 	}
 	channelsDailyMap.Lock()
@@ -927,9 +927,9 @@ func sendHelloMsj(ws *websocket.Conn, channelID string) error {
 		Type:    "message",
 		Channel: channelID,
 		Text: "Hello team! I'm here to help you with your daily meetings. To add members " +
-			"to the daily meeting type `@leanmanager: daily add member`, to setup the hour of the " +
-			"daily meeting, type `@leanmanager: daily schedule`.\n" +
-			"If you need help, just type `@leanmanager: help` :sos:",
+			"to the daily meeting type `@leanmanager daily add member`, to setup the hour of the " +
+			"daily meeting, type `@leanmanager daily schedule`.\n" +
+			"If you need help, just type `@leanmanager help` :sos:",
 	}
 
 	return m.send(ws)
@@ -943,15 +943,15 @@ func sendHelpMsj(ws *websocket.Conn, channelID string) error {
 		Channel: channelID,
 		Text: "Even if I'm a bit surly, work with me it's quite easy :sunglasses:\n" +
 			"Just type the order, and I will obey. Those are the orders available:\n" +
-			"`@leanmanager: daily add member` to add new members in the Daily Meeting\n" +
-			"`@leanmanager: daily delete member` to delete members from the Daily Meeting\n" +
-			"`@leanmanager: daily list members` to obtain a list of members participating in the Daily\n" +
-			"`@leanmanager: daily start` to start the daily in any moment or to repeat it\n" +
-			"`@leanmanager: daily info` to know when it's scheduled and the last time it was done\n" +
-			"`@leanmanager: daily schedule` to setup the periodicity of the Daily Meeting\n" +
-			"`@leanmanager: daily resume` to do the Daily report if you miss the Daily Meeting\n" +
-			"`@leanmanager: daily add reply` to add predefined bot replies to the Daily answers\n" +
-			"`@leanmanager: daily delete reply` to delete predefined bot replies to the Daily answers\n" +
+			"`@leanmanager daily add member` to add new members in the Daily Meeting\n" +
+			"`@leanmanager daily delete member` to delete members from the Daily Meeting\n" +
+			"`@leanmanager daily list members` to obtain a list of members participating in the Daily\n" +
+			"`@leanmanager daily start` to start the daily in any moment or to repeat it\n" +
+			"`@leanmanager daily info` to know when it's scheduled and the last time it was done\n" +
+			"`@leanmanager daily schedule` to setup the periodicity of the Daily Meeting\n" +
+			"`@leanmanager daily resume` to do the Daily report if you miss the Daily Meeting\n" +
+			"`@leanmanager daily add reply` to add predefined bot replies to the Daily answers\n" +
+			"`@leanmanager daily delete reply` to delete predefined bot replies to the Daily answers\n" +
 			"If I ask something, just reply, I will do my best to understand you :grin:",
 	}
 
@@ -963,7 +963,7 @@ func sendStartDailyMsj(ws *websocket.Conn, channelID string) error {
 		ID:      0,
 		Type:    "message",
 		Channel: channelID,
-		Text:    "Hi @everyone! Let's start the Daily Meeting :mega:",
+		Text:    "Hi @channel! Let's start the Daily Meeting :mega:",
 	}
 	return m.send(ws)
 }
@@ -973,7 +973,7 @@ func sendNotAvailableMsj(ws *websocket.Conn, channelID string) error {
 		ID:      0,
 		Type:    "message",
 		Channel: channelID,
-		Text:    ":chicken:... please, do it later, just type `@leanmanager: daily resume` before the end of the day",
+		Text:    ":chicken:... please, do it later, just type `@leanmanager daily resume` before the end of the day",
 	}
 	return m.send(ws)
 }
@@ -983,7 +983,7 @@ func sendNotMembersRegisteredMsj(ws *websocket.Conn, channelID string) error {
 		ID:      0,
 		Type:    "message",
 		Channel: channelID,
-		Text:    "There are no members registered yet. Type `@leanmanager: daily add member` to add the first one",
+		Text:    "There are no members registered yet. Type `@leanmanager daily add member` to add the first one",
 	}
 	return m.send(ws)
 }
@@ -1027,8 +1027,8 @@ func (m Message) getChannelID() string {
 }
 
 func (m Message) isHelpMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: help") ||
-		strings.HasPrefix(m.Text, "leanmanager: help")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> help") ||
+		strings.HasPrefix(m.Text, "leanmanager help")) {
 		return true
 	}
 
@@ -1040,8 +1040,8 @@ func (m Message) isInitialMsj(botID string) bool {
 		return true
 	}
 
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: hello") ||
-		strings.HasPrefix(m.Text, "leanmanager: hello")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> hello") ||
+		strings.HasPrefix(m.Text, "leanmanager hello")) {
 		return true
 	}
 
@@ -1049,8 +1049,8 @@ func (m Message) isInitialMsj(botID string) bool {
 }
 
 func (m Message) isAddMemberDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily add member") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily add member")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily add member") ||
+		strings.HasPrefix(m.Text, "leanmanager daily add member")) {
 		return true
 	}
 
@@ -1058,72 +1058,72 @@ func (m Message) isAddMemberDailyMsj(botID string) bool {
 }
 
 func (m Message) isDeleteMemberDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily delete member") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily delete member")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily delete member") ||
+		strings.HasPrefix(m.Text, "leanmanager daily delete member")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isListMembersDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily list") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily list")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily list") ||
+		strings.HasPrefix(m.Text, "leanmanager daily list")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isStartDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily start") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily start")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily start") ||
+		strings.HasPrefix(m.Text, "leanmanager daily start")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isInfoDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily info") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily info")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily info") ||
+		strings.HasPrefix(m.Text, "leanmanager daily info")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isAddReplyDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily add reply") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily add reply")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily add reply") ||
+		strings.HasPrefix(m.Text, "leanmanager daily add reply")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isDeleteReplyDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily delete reply") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily delete reply")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily delete reply") ||
+		strings.HasPrefix(m.Text, "leanmanager daily delete reply")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isScheduleDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily schedule") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily schedule")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily schedule") ||
+		strings.HasPrefix(m.Text, "leanmanager daily schedule")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isResumeDailyMsj(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: daily resume") ||
-		strings.HasPrefix(m.Text, "leanmanager: daily resume")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> daily resume") ||
+		strings.HasPrefix(m.Text, "leanmanager daily resume")) {
 		return true
 	}
 	return false
 }
 
 func (m Message) isCommand(botID string) bool {
-	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+">: ") ||
-		strings.HasPrefix(m.Text, "leanmanager: ")) {
+	if m.Type == "message" && (strings.HasPrefix(m.Text, "<@"+botID+"> ") ||
+		strings.HasPrefix(m.Text, "leanmanager ")) {
 		return true
 	}
 	return false
