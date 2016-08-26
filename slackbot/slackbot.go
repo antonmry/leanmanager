@@ -75,7 +75,12 @@ func LaunchSlackbot(slackTokenArg, teamIDArg, apiserverHostArg string, apiserver
 	// Message processing
 	for {
 		if m, err := receiveMessage(ws); err != nil {
-			log.Printf("slackbot: error receiving message, %s\n", err)
+			log.Printf("slackbot: error receiving message: %v", err)
+			ws, botID, err = slackConnect(slackTokenArg)
+			if err != nil {
+				log.Printf("slackbot: error reconnecting to Slack: %v", err)
+
+			}
 			continue
 		} else {
 			go func(m Message) {
