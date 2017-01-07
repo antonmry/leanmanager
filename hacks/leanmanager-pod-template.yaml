@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: leanmanager
+  labels:
+    name: leanmanager
+spec:
+  containers:
+    - image: antonmry/leanmanager:latest
+      name: leanmanager
+      env:
+        - name: LEANMANAGER_TOKEN
+          value: LEANMANAGER_TOKEN_TEMPLATE
+        - name: LEANMANAGER_PATHDB
+          value: /mnt
+      volumeMounts:
+          # This name must match the volumes.name below.
+        - name: leanmanager-persistent-storage
+          mountPath: /mnt
+  volumes:
+    - name: leanmanager-persistent-storage
+      gcePersistentDisk:
+        # This disk must already exist.
+        pdName: leanmanager-disk
+        fsType: ext4

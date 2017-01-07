@@ -39,7 +39,15 @@ resource "google_container_cluster" "primary" {
     command = "gcloud container clusters get-credentials ${var.cluster_name} --zone ${var.region}"
   }
 
+provisioner "local-exec" {
+    command = "cp leanmanager-pod-template.yaml leanmanager.tmp.yaml && sed -i -- 's/LEANMANAGER_TOKEN_TEMPLATE/${var.LEANMANAGER_TOKEN}/g' leanmanager.tmp.yaml"
+  }
+
   provisioner "local-exec" {
-    command = "kubectl run leanmanager-node --image=antonmry/leanmanager:latest --env=LEANMANAGER_TOKEN=${var.LEANMANAGER_TOKEN}"
+    command = "kubectl create -f leanmanager.tmp.yaml"
+  }
+
+  provisioner "local-exec" {
+    command = "rm -f leanmanager.tmp.yaml"
   }
 }
